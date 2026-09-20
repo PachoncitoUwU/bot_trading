@@ -668,7 +668,6 @@ class BotRunner:
                                 f"━━━━━━━━━━━━━━━━━━━━\n"
                                 f"<i>El bot ha detenido la maratón de aprendizaje en la cima. ¡Excelente resultado!</i>"
                             )
-                        elif t_reason == "STOP_SALDO_CERO":
                         elif t_reason == "STOP_LOSS_SESION":
                             target_msg = (
                                 f"🛡️ <b>FRENO DE SEGURIDAD ACTIVADO (STOP LOSS DE SESIÓN)</b> 🛡️\n"
