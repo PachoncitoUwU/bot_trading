@@ -127,10 +127,10 @@ class TelegramClient:
             return []
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 409:
-                logger.warning("[TELEGRAM] 409 Conflict en getUpdates. Esperando 5s para liberar sesión previa...")
+                logger.warning(f"[TELEGRAM] 409 Conflict en getUpdates ({e.response.text}). Esperando 5s...")
                 await asyncio.sleep(5)
             else:
-                logger.error(f"[TELEGRAM] getUpdates HTTP {e.response.status_code}: {e}")
+                logger.error(f"[TELEGRAM] getUpdates HTTP {e.response.status_code}: {e.response.text}")
                 await asyncio.sleep(2)
             return []
         except Exception as e:

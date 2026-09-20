@@ -390,6 +390,44 @@ class TelegramAdminHandler:
             "━━━━━━━━━━━━━━━━━━━━"
         )
 
+    def handle_market_hours_report(self, regime: Dict[str, Any]) -> str:
+        """Advises the user on market conditions and whether right now is optimal to trade."""
+        label = regime.get("label", "Mercado Estándar")
+        is_morning = regime.get("is_morning_real", False)
+        desc = regime.get("description", "")
+        rec_target = regime.get("recommended_target_pct", Decimal("3.5"))
+
+        if is_morning:
+            status_icon = "🟢"
+            veredicto = "⭐ <b>¡HORARIO DE ORO PARA OPERAR!</b> (Máxima Liquidez)"
+            consejo = (
+                "Bancos de Londres y Nueva York abiertos simultáneamente. "
+                "Los gráficos respetan soportes, resistencias y patrones con máxima precisión. "
+                "<b>¡Momento ideal para presionar '▶️ Iniciar Trading' y buscar tu meta del 5%!</b>"
+            )
+        else:
+            status_icon = "🟡"
+            veredicto = "⚡ <b>MERCADO NOCTURNO / FIN DE SEMANA (OTC)</b>"
+            consejo = (
+                "Mercado algorítmico del broker. El bot aplicará filtros de alta convicción "
+                "y posturas seguras de $25 USD para proteger tu capital. Meta recomendada: +3.0% a +3.5%."
+            )
+
+        return (
+            "🕒 <b>ASESOR DE HORARIOS DE MERCADO</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"📍 <b>Régimen Actual:</b> {status_icon} <code>{label}</code>\n"
+            f"💡 <b>Diagnóstico:</b> {veredicto}\n\n"
+            f"📝 <b>Recomendación del Algoritmo:</b>\n{consejo}\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🏆 <b>LOS MEJORES HORARIOS DE LA SEMANA:</b>\n"
+            "• <b>Lunes a Viernes (07:00 a 12:00 UTC-5 / Bogotá / EST):</b> Solapamiento Londres-Nueva York. <i>El horario más limpio y rentable.</i>\n"
+            "• <b>Tardes (12:00 a 17:00):</b> Tendencias de Nueva York.\n"
+            "• <b>Noches y Fines de Semana:</b> Mercado OTC (operativa francotiradora prudente).\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "<i>El bot está encendido 24/7 en Standby listo para cuando tú decidas iniciar.</i>"
+        )
+
     @staticmethod
     def get_main_menu_keyboard() -> Dict[str, Any]:
         """Returns Telegram ReplyKeyboardMarkup with one-tap tactile buttons."""
@@ -397,8 +435,8 @@ class TelegramAdminHandler:
             "keyboard": [
                 [{"text": "▶️ Iniciar Trading"}, {"text": "⏹️ Parar Trading"}],
                 [{"text": "🎯 Meta (3% a 5%)"}, {"text": "📊 Saldo y Balance"}],
-                [{"text": "💰 Ganancias / PnL"}, {"text": "⚙️ Fijar Meta"}],
-                [{"text": "🧠 Aprendizaje IA"}, {"text": "⏱️ Modo Horas"}]
+                [{"text": "💰 Ganancias / PnL"}, {"text": "🕒 Cuándo Operar"}],
+                [{"text": "🎯 Radar IA"}, {"text": "⚙️ Fijar Meta"}]
             ],
             "resize_keyboard": True,
             "one_time_keyboard": False,

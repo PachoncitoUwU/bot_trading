@@ -107,25 +107,8 @@ class TelegramPollingLoop:
             response = bot_runner.admin_handler.handle_pause_bot(username)
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
-        # Meta de Ganancia y Progreso
-        elif text.startswith("/meta") or text.startswith("/target") or "Meta" in text:
-            if hasattr(bot_runner, "session_manager"):
-                progress_data = bot_runner.session_manager.get_progress_data()
-                response = bot_runner.admin_handler.handle_target_progress_report(progress_data)
-            else:
-                response = "🎯 <b>Módulo de Metas no inicializado todavía.</b>"
-            await self._client.send_message(chat_id, response, reply_markup=keyboard)
-
-        # Modo Horas (Ciclo 1h operando / 1h descanso)
-        elif text.startswith("/horas") or text.startswith("/ciclo") or text == "⏱️ Modo Horas":
-            if hasattr(bot_runner, "session_manager"):
-                response = bot_runner.admin_handler.handle_toggle_hourly_cycle(bot_runner.session_manager)
-            else:
-                response = "⏱️ <b>Gestor de sesiones no activo.</b>"
-            await self._client.send_message(chat_id, response, reply_markup=keyboard)
-
         # Configurar Meta (3%, 4%, 5%, AUTO)
-        elif text.startswith("/set_meta") or text in ("/meta_3", "/meta_4", "/meta_5", "/meta_auto") or text == "⚙️ Fijar Meta":
+        elif text == "⚙️ Fijar Meta" or text.startswith("/set_meta") or text in ("/meta_3", "/meta_4", "/meta_5", "/meta_auto"):
             if hasattr(bot_runner, "session_manager"):
                 if text == "⚙️ Fijar Meta":
                     response = (
@@ -144,6 +127,32 @@ class TelegramPollingLoop:
                     response = bot_runner.admin_handler.handle_set_target(bot_runner.session_manager, mode_arg)
             else:
                 response = "⚙️ <b>Gestor de sesiones no activo.</b>"
+            await self._client.send_message(chat_id, response, reply_markup=keyboard)
+
+        # Meta de Ganancia y Progreso
+        elif text == "🎯 Meta (3% a 5%)" or text in ("/meta", "/target", "/progreso") or text.startswith("/meta ") or text.startswith("/target "):
+            if hasattr(bot_runner, "session_manager"):
+                progress_data = bot_runner.session_manager.get_progress_data()
+                response = bot_runner.admin_handler.handle_target_progress_report(progress_data)
+            else:
+                response = "🎯 <b>Módulo de Metas no inicializado todavía.</b>"
+            await self._client.send_message(chat_id, response, reply_markup=keyboard)
+
+        # Asesor de Horarios de Mercado (Cuándo Operar)
+        elif text == "🕒 Cuándo Operar" or text.startswith("/horario") or text.startswith("/horas_mercado") or text.startswith("/when"):
+            if hasattr(bot_runner, "session_manager"):
+                regime = bot_runner.session_manager.get_market_regime()
+            else:
+                regime = {"label": "Mercado Estándar", "is_morning_real": False, "description": ""}
+            response = bot_runner.admin_handler.handle_market_hours_report(regime)
+            await self._client.send_message(chat_id, response, reply_markup=keyboard)
+
+        # Modo Horas (Ciclo 1h operando / 1h descanso)
+        elif text.startswith("/horas") or text.startswith("/ciclo") or text == "⏱️ Modo Horas":
+            if hasattr(bot_runner, "session_manager"):
+                response = bot_runner.admin_handler.handle_toggle_hourly_cycle(bot_runner.session_manager)
+            else:
+                response = "⏱️ <b>Gestor de sesiones no activo.</b>"
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Estado y Balance
