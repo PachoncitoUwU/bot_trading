@@ -189,6 +189,12 @@ class TelegramPollingLoop:
             )
             await self._client.send_message(chat_id, resp, reply_markup=keyboard)
 
+        # Forward-Testing Estadístico 300 Trades
+        elif text.startswith("/forward_test") or text.startswith("/test") or text.startswith("/hito") or text == "🔬 Forward-Test":
+            from app.engine.forward_test_tracker import forward_test_tracker
+            response = forward_test_tracker.format_milestone_report(forward_test_tracker.data["total_trades"])
+            await self._client.send_message(chat_id, response, reply_markup=keyboard)
+
         # Ganancias y Rendimiento
         elif text.startswith("/ganancias") or text.startswith("/pnl") or text == "💰 Ganancias / PnL":
             response = bot_runner.admin_handler.handle_pnl_report(

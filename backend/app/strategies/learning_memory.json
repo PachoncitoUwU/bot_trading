@@ -8,10 +8,10 @@
   },
   "Impulso Bajista Fuerte": {
     "wins": 67,
-    "losses": 71,
-    "weight": 0.85,
-    "total_pnl": -1157.0,
-    "win_rate": 48.6
+    "losses": 72,
+    "weight": 0.8,
+    "total_pnl": -1257.0,
+    "win_rate": 48.2
   },
   "Cruce Dorado IA": {
     "wins": 14,
@@ -64,17 +64,17 @@
   },
   "Martillo / Pinbar Alcista": {
     "wins": 49,
-    "losses": 58,
-    "weight": 0.7,
-    "total_pnl": -1534.0,
-    "win_rate": 45.8
+    "losses": 59,
+    "weight": 0.65,
+    "total_pnl": -1634.0,
+    "win_rate": 45.4
   },
   "Estrella Fugaz / Pinbar Bajista": {
     "wins": 36,
-    "losses": 44,
-    "weight": 0.7,
-    "total_pnl": -1179.7,
-    "win_rate": 45.0
+    "losses": 46,
+    "weight": 0.6,
+    "total_pnl": -1379.7,
+    "win_rate": 43.9
   },
   "Confluencia Sniper CALL": {
     "wins": 23,
@@ -92,8 +92,8 @@
   },
   "Doji": {
     "wins": 0,
-    "losses": 1,
-    "weight": 0.95,
+    "losses": 2,
+    "weight": 0.9,
     "total_pnl": -100.0,
     "win_rate": 0.0
   }

@@ -136,7 +136,7 @@ class TelegramAdminHandler:
             "🤖 <b>Estado:</b> ACTIVO Y ESCANEANDO\n"
             f"🎯 <b>Meta de Sesión:</b> <b>+{target_pct}</b> (Auto-apagado al cumplir)\n"
             "🛡️ <b>Freno de Seguridad:</b> <b>-3.0%</b> (Stop Loss de cuenta)\n"
-            "⚡ <b>Gestión de Capital:</b> Posturas proporcionales seguras\n"
+            "⚡ <b>Gestión de Capital:</b> Tamaño FIJO 0.25% ($25 USD) — <b>CERO Martingala</b> 🛡️\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "<i>El bot analizará las mejores confluencias y te notificará cada operación y resultado.</i>"
         )

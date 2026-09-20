@@ -20,34 +20,25 @@ class StakingManager:
     MAX_ALLOWED_STAKE: Decimal = Decimal("100.0")
 
     def __init__(self, steps: Optional[List[float]] = None):
-        if steps:
-            self.steps = [to_decimal(str(s)) for s in steps]
-        else:
-            # Default institutional 2-step sizing (0.25% base, 0.55% recovery)
-            self.steps = [Decimal("25.0"), Decimal("55.0")]
-            
+        # 100% FLAT STAKE: Posición fija sin escalada tras pérdidas (Pure Fixed Fractional 0.25%)
+        self.steps = [Decimal("25.0")]
         self.current_step_index: int = 0
         self.consecutive_losses: int = 0
         self.consecutive_wins: int = 0
-        self.total_martingale_cycles_completed: int = 0
+        self.total_cycles_completed: int = 0
         self.history: List[Dict[str, Any]] = []
 
     def sync_account_equity(self, equity: Decimal) -> None:
-        """Dynamically scales base stake to 0.25% of account balance (safe proportional growth)."""
+        """Dynamically sets fixed stake to exactly 0.25% of account balance (Flat Position Sizing)."""
         if equity > Decimal("10.0"):
-            base = max(Decimal("1.0"), min(Decimal("50.0"), round(equity * Decimal("0.0025"), 0)))
-            step2 = max(Decimal("2.0"), min(Decimal("110.0"), round(base * Decimal("2.2"), 0)))
-            self.steps = [base, step2]
+            base = max(Decimal("1.0"), min(Decimal("100.0"), round(equity * Decimal("0.0025"), 0)))
+            self.steps = [base]
             self.current_step_index = 0
-            logger.info(f"[STAKING] Dynamic staking synced for ${equity:,.2f} USD: Paso 1=${base:,.0f} USD, Paso 2=${step2:,.0f} USD")
+            logger.info(f"[STAKING] Pure Flat Stake active: ${base:,.0f} USD fijo por operación (0.25% del capital, SIN martingala).")
 
     def get_current_stake(self) -> Decimal:
         """Returns the stake amount in USD for the next trade."""
-        if 0 <= self.current_step_index < len(self.steps):
-            raw_stake = self.steps[self.current_step_index]
-        else:
-            raw_stake = self.steps[0]
-        return min(self.MAX_ALLOWED_STAKE, raw_stake)
+        return self.steps[0] if self.steps else Decimal("25.0")
 
     def calculate_dynamic_stake(
         self,
@@ -55,66 +46,46 @@ class StakingManager:
         confluences: int = 1
     ) -> tuple[Decimal, str]:
         """
-        Calculates stake size based on exact 2-step institutional recovery:
-        - Paso 1 (Base): 0.25% del capital (ej. $25 USD en cuenta de $10K)
-        - Paso 2 (Recuperación Inteligente): 0.55% del capital (ej. $55 USD)
-        - Al ganar: Reseteo inmediato a Paso 1 ($25 USD).
-        - Si se pierde Paso 2: Freno de seguridad y reseteo a Paso 1 ($25 USD) con pérdida máxima de solo 0.8%.
+        Pure Flat Staking: Exactamente 0.25% del capital en cada operación.
+        Sin martingala, sin escalada, sin recuperación forzada.
         """
-        if self.current_step_index > 0:
-            stake = self.get_current_stake()
-            reason = f"Recuperación Inteligente (Paso {self.current_step_index + 1}: ${stake:,.0f} USD)"
-        else:
-            stake = self.steps[0] if self.steps else Decimal("25.0")
-            reason = f"Stake Base Estándar ${stake:,.0f} USD"
-
+        stake = self.get_current_stake()
+        reason = f"Tamaño Fijo 0.25% (${stake:,.0f} USD, Sin Martingala)"
         final_stake = min(self.MAX_ALLOWED_STAKE, max(Decimal("1.0"), stake))
         return final_stake, reason
 
     def record_trade_result(self, is_win: bool, profit_usd: float, symbol: str) -> Dict[str, Any]:
         """
-        Updates the staking state based on trade outcome.
-        Returns outcome metadata.
+        Updates the staking state based on trade outcome under Pure Flat Staking.
         """
-        old_step = self.current_step_index
-        old_stake = self.steps[old_step]
+        stake = self.get_current_stake()
+        old_step = 0
+        old_stake = stake
+        self.current_step_index = 0
         
         if is_win:
             self.consecutive_wins += 1
             self.consecutive_losses = 0
-            self.current_step_index = 0
-            event = "WIN_RESET"
-            msg = f"🏆 ¡GANANCIA! (+${profit_usd:,.2f}). Reiniciando al Paso 1 (${self.steps[0]:,.2f} USD)."
+            event = "WIN"
+            msg = f"🏆 ¡GANANCIA! (+${profit_usd:,.2f}). Siguiente trade: ${stake:,.2f} USD (Fijo 0.25%)."
             logger.info(f"[STAKING] {msg}")
         else:
             self.consecutive_losses += 1
             self.consecutive_wins = 0
-            if self.current_step_index + 1 < len(self.steps):
-                self.current_step_index += 1
-                event = "LOSS_ADVANCE"
-                next_stake = self.steps[self.current_step_index]
-                msg = (
-                    f"⚠️ Pérdida en Paso {old_step + 1} (${old_stake:,.2f}). "
-                    f"Avanzando a Paso {self.current_step_index + 1} (${next_stake:,.2f} USD) para recuperar."
-                )
-                logger.warning(f"[STAKING] {msg}")
-            else:
-                self.current_step_index = 0
-                self.total_martingale_cycles_completed += 1
-                event = "LOSS_RESET_PROTECTION"
-                msg = (
-                    f"🛑 Pérdida en Paso {len(self.steps)} (${old_stake:,.2f}). "
-                    f"Freno de seguridad activado: Reiniciando al Paso 1 (${self.steps[0]:,.2f} USD) para proteger tu capital."
-                )
-                logger.warning(f"[STAKING] {msg}")
+            event = "LOSS"
+            msg = (
+                f"⚠️ Pérdida de trade (-${stake:,.2f} USD). "
+                f"Siguiente trade: ${stake:,.2f} USD (Fijo 0.25%, SIN aumentar postura)."
+            )
+            logger.warning(f"[STAKING] {msg}")
 
         record = {
             "symbol": symbol,
             "is_win": is_win,
             "profit_usd": profit_usd,
-            "step_before": old_step + 1,
+            "step_before": 1,
             "stake_used": float(old_stake),
-            "step_after": self.current_step_index + 1,
+            "step_after": 1,
             "next_stake": float(self.get_current_stake()),
             "event": event,
             "message": msg,
@@ -125,16 +96,15 @@ class StakingManager:
     def get_telemetry(self) -> Dict[str, Any]:
         """Exposes staking state to UI dashboard and Telegram."""
         return {
-            "current_step": self.current_step_index + 1,
-            "total_steps": len(self.steps),
+            "current_step": 1,
+            "total_steps": 1,
             "current_stake": float(self.get_current_stake()),
             "steps_config": [float(s) for s in self.steps],
             "consecutive_losses": self.consecutive_losses,
             "consecutive_wins": self.consecutive_wins,
-            "label": f"Paso {self.current_step_index + 1}/{len(self.steps)} (${self.get_current_stake():,.0f} USD)",
+            "label": f"Fijo 0.25% (${self.get_current_stake():,.0f} USD)",
             "status_text": (
-                f"Siguiente operación: ${self.get_current_stake():,.0f} USD "
-                f"(Paso {self.current_step_index + 1} de {len(self.steps)})"
+                f"Tamaño Fijo: ${self.get_current_stake():,.0f} USD (0.25% capital, CERO martingala)"
             ),
         }
 

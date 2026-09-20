@@ -544,6 +544,24 @@ class BotRunner:
                     }
                     self.trade_history.append(trade_record)
 
+                    # Forward-Testing Tracker integration (Milestone reporting every 50 trades)
+                    try:
+                        from app.engine.forward_test_tracker import forward_test_tracker
+                        is_milestone, milestone_msg = forward_test_tracker.record_trade(
+                            symbol=symbol,
+                            pattern=getattr(sig, "pattern_name", "") or "General Sniper",
+                            side="CALL" if side == OrderSide.BUY else "PUT",
+                            stake=float(stake),
+                            is_win=is_win,
+                            profit_usd=profit,
+                            current_balance=float(self.equity),
+                        )
+                        if is_milestone and milestone_msg:
+                            await self.broadcast_service.send_broadcast(milestone_msg)
+                            logger.info(f"[FORWARD TEST] 🎯 Hito alcanzado ({forward_test_tracker.data['total_trades']}/300). Reporte enviado a Telegram.")
+                    except Exception as ft_err:
+                        logger.error(f"[FORWARD TEST] Error recording trade: {ft_err}")
+
                     # Refrescar balance real de IQ Option
                     await self._refresh_balance()
 
