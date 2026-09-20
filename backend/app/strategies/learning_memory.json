@@ -1,0 +1,100 @@
+{
+  "Take Profit Alcanzado \ud83c\udfaf": {
+    "wins": 222,
+    "losses": 3,
+    "weight": 1.5,
+    "total_pnl": 0.02,
+    "win_rate": 98.7
+  },
+  "Impulso Bajista Fuerte": {
+    "wins": 67,
+    "losses": 71,
+    "weight": 0.85,
+    "total_pnl": -1157.0,
+    "win_rate": 48.6
+  },
+  "Cruce Dorado IA": {
+    "wins": 14,
+    "losses": 10,
+    "weight": 1.2,
+    "total_pnl": 225.0,
+    "win_rate": 58.3
+  },
+  "Envolvente Alcista": {
+    "wins": 15,
+    "losses": 21,
+    "weight": 0.75,
+    "total_pnl": -792.0,
+    "win_rate": 41.7
+  },
+  "Estrella Fugaz / Rechazo Bajista": {
+    "wins": 19,
+    "losses": 24,
+    "weight": 0.75,
+    "total_pnl": -543.0,
+    "win_rate": 44.2
+  },
+  "Martillo / Rechazo Alcista": {
+    "wins": 37,
+    "losses": 34,
+    "weight": 1.15,
+    "total_pnl": -173.0,
+    "win_rate": 52.1
+  },
+  "Impulso Alcista Fuerte": {
+    "wins": 44,
+    "losses": 55,
+    "weight": 0.7,
+    "total_pnl": -1465.0,
+    "win_rate": 44.4
+  },
+  "Envolvente Bajista": {
+    "wins": 45,
+    "losses": 41,
+    "weight": 1.2,
+    "total_pnl": -171.0,
+    "win_rate": 52.3
+  },
+  "Cruce Muerte IA": {
+    "wins": 2,
+    "losses": 10,
+    "weight": 0.6,
+    "total_pnl": -826.0,
+    "win_rate": 16.7
+  },
+  "Martillo / Pinbar Alcista": {
+    "wins": 49,
+    "losses": 58,
+    "weight": 0.7,
+    "total_pnl": -1534.0,
+    "win_rate": 45.8
+  },
+  "Estrella Fugaz / Pinbar Bajista": {
+    "wins": 36,
+    "losses": 44,
+    "weight": 0.7,
+    "total_pnl": -1179.7,
+    "win_rate": 45.0
+  },
+  "Confluencia Sniper CALL": {
+    "wins": 23,
+    "losses": 23,
+    "weight": 1.0,
+    "total_pnl": -298.0,
+    "win_rate": 50.0
+  },
+  "Confluencia Sniper PUT": {
+    "wins": 17,
+    "losses": 18,
+    "weight": 0.95,
+    "total_pnl": -318.0,
+    "win_rate": 48.6
+  },
+  "Doji": {
+    "wins": 0,
+    "losses": 1,
+    "weight": 0.95,
+    "total_pnl": -100.0,
+    "win_rate": 0.0
+  }
+}
