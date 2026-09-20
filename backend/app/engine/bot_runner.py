@@ -131,6 +131,23 @@ class BotRunner:
             logger.info("[RUNNER] Bot inicializado con éxito en modo STANDBY (Esperando comando de inicio desde Telegram).")
         return reconcile_result
 
+    def reset_and_resume_trading(self) -> None:
+        """Fully resets all session targets, locks, daily drawdown, and resumes active trading."""
+        import time
+        self.is_running = True
+        if hasattr(self, "session_manager"):
+            self.session_manager.reset_session(current_equity=self.equity)
+            self.session_manager.cycle_state = "ACTIVE"
+            self.session_manager.cycle_start_time = time.time()
+        if hasattr(self, "risk_manager"):
+            self.risk_manager.reset_daily_limits(self.equity)
+        if hasattr(self, "reconciler"):
+            self.reconciler.is_locked_for_review = False
+        if hasattr(self, "admin_handler"):
+            self.admin_handler.is_panic_stopped = False
+            self.admin_handler.state_reconciler.is_locked_for_review = False
+        logger.info(f"[RUNNER] Trading reanudado y desbloqueado exitosamente. Saldo base: ${self.equity:,.2f} USD")
+
     # ──────────────────────────────────────────────────────────────────────────
     # Main tick
     # ──────────────────────────────────────────────────────────────────────────

@@ -88,6 +88,16 @@ class RiskManager:
 
         return True, "Equity within safe parameters."
 
+    def reset_daily_limits(self, current_equity: Decimal) -> None:
+        """Manually resets the daily drawdown baseline, high-water mark, and clears all lockouts."""
+        if current_equity > Decimal("0"):
+            self.daily_starting_equity = current_equity
+            self.daily_high_watermark = current_equity
+        self.is_daily_drawdown_locked = False
+        if hasattr(self, "circuit_breaker"):
+            self.circuit_breaker.manual_reset()
+        logger.info(f"[RISK MANAGER] Límites de riesgo reiniciados manualmente. Nueva línea base: ${current_equity:.2f} USD")
+
     def calculate_position_size(
         self,
         symbol: str,

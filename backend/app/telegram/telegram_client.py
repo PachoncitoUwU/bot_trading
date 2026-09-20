@@ -102,6 +102,24 @@ class TelegramClient:
             logger.error(f"[TELEGRAM] answerCallbackQuery failed: {e}")
             return False
 
+    async def delete_webhook(self, drop_pending_updates: bool = False) -> bool:
+        """Deletes any registered webhook so getUpdates long-polling works smoothly."""
+        if not self._token:
+            return False
+        try:
+            client = await self._get_client()
+            resp = await client.post(
+                self._url("deleteWebhook"),
+                json={"drop_pending_updates": drop_pending_updates},
+                timeout=10.0,
+            )
+            resp.raise_for_status()
+            logger.info("[TELEGRAM] Webhook successfully removed for long-polling.")
+            return True
+        except Exception as e:
+            logger.error(f"[TELEGRAM] deleteWebhook failed: {e}")
+            return False
+
     async def get_updates(
         self,
         offset: int = 0,
@@ -127,8 +145,9 @@ class TelegramClient:
             return []
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 409:
-                logger.warning(f"[TELEGRAM] 409 Conflict en getUpdates ({e.response.text}). Esperando 5s...")
-                await asyncio.sleep(5)
+                logger.warning(f"[TELEGRAM] 409 Conflict en getUpdates ({e.response.text}). Eliminando webhook conflictivo...")
+                await self.delete_webhook(drop_pending_updates=False)
+                await asyncio.sleep(2)
             else:
                 logger.error(f"[TELEGRAM] getUpdates HTTP {e.response.status_code}: {e.response.text}")
                 await asyncio.sleep(2)

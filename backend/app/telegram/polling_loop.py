@@ -27,6 +27,12 @@ class TelegramPollingLoop:
         self._running = True
         logger.info("[TELEGRAM POLLING] Long-polling loop started.")
 
+        # Ensure any conflicting webhook is removed before beginning polling
+        try:
+            await self._client.delete_webhook(drop_pending_updates=False)
+        except Exception as e:
+            logger.warning(f"[TELEGRAM POLLING] Note: delete_webhook on start: {e}")
+
         while self._running:
             try:
                 updates = await self._client.get_updates(
@@ -36,7 +42,10 @@ class TelegramPollingLoop:
                 )
                 for update in updates:
                     self._offset = update["update_id"] + 1
-                    await self._dispatch(update)
+                    try:
+                        await self._dispatch(update)
+                    except Exception as dispatch_err:
+                        logger.error(f"[TELEGRAM POLLING] Error dispatching update: {dispatch_err}", exc_info=True)
             except asyncio.CancelledError:
                 logger.info("[TELEGRAM POLLING] Loop cancelled — shutting down.")
                 break
@@ -92,13 +101,8 @@ class TelegramPollingLoop:
             or clean == "▶️ iniciar bot"
             or clean in ("iniciar", "start", "arrancar", "activar", "comenzar", "run")
         ):
-            import time
             await bot_runner._refresh_balance()
-            if hasattr(bot_runner, "session_manager"):
-                bot_runner.session_manager.reset_session(current_equity=bot_runner.equity)
-                bot_runner.session_manager.cycle_state = "ACTIVE"
-                bot_runner.session_manager.cycle_start_time = time.time()
-            bot_runner.is_running = True
+            bot_runner.reset_and_resume_trading()
             t_pct = bot_runner.session_manager.target_mode if hasattr(bot_runner, "session_manager") else "3.5%"
             response = bot_runner.admin_handler.handle_start_bot(username, target_pct=t_pct)
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
@@ -304,13 +308,8 @@ class TelegramPollingLoop:
             )
             await self._client.send_message(chat_id, response)
         elif data in ("start_bot", "iniciar", "start"):
-            import time
             await bot_runner._refresh_balance()
-            if hasattr(bot_runner, "session_manager"):
-                bot_runner.session_manager.reset_session(current_equity=bot_runner.equity)
-                bot_runner.session_manager.cycle_state = "ACTIVE"
-                bot_runner.session_manager.cycle_start_time = time.time()
-            bot_runner.is_running = True
+            bot_runner.reset_and_resume_trading()
             keyboard = bot_runner.admin_handler.get_main_menu_keyboard()
             t_pct = bot_runner.session_manager.target_mode if hasattr(bot_runner, "session_manager") else "3.5%"
             response = bot_runner.admin_handler.handle_start_bot(username, target_pct=t_pct)

@@ -39,7 +39,7 @@ class AILearningStrategy(BaseStrategy):
             "rsi_period": 14,
             "rsi_oversold": 35,
             "rsi_overbought": 65,
-            "min_confidence": Decimal("0.48"),  # Fase 1: Entrenamiento activo con umbral ágil y auto-calibración progresiva
+            "min_confidence": Decimal("0.58"),  # Umbral sniper: mínimo 58% de confianza para filtrar ruido OTC
             "base_sl_pct": Decimal("1.5"),
             "base_tp_pct": Decimal("3.0"),
             "use_internet_sentiment": True,
@@ -449,10 +449,11 @@ class AILearningStrategy(BaseStrategy):
             is_in_position = symbol in open_positions
 
             if not is_in_position:
-                # Trigger CALL: Requires bull_confidence >= active_min_conf, at least 1 primary anchor, and bull > bear
+                # Trigger CALL: Requires bull_confidence >= active_min_conf, at least 2 confluences, and bull > bear
                 if (
                     bull_confidence >= active_min_conf
-                    and (touched_lower_bb or rsi <= Decimal("42.0"))
+                    and bull_confluences >= 2
+                    and (touched_lower_bb or rsi <= Decimal("40.0"))
                     and bull_confidence > bear_confidence
                 ):
                     sl_pct = self.params["base_sl_pct"]
@@ -484,10 +485,11 @@ class AILearningStrategy(BaseStrategy):
                         f"(conf={bull_confidence:.2f}, stage={learning_stage}): {sig.reason}"
                     )
 
-                # Trigger PUT: Requires bear_confidence >= active_min_conf, at least 1 primary anchor, and bear > bull
+                # Trigger PUT: Requires bear_confidence >= active_min_conf, at least 2 confluences, and bear > bull
                 elif (
                     bear_confidence >= active_min_conf
-                    and (touched_upper_bb or rsi >= Decimal("58.0"))
+                    and bear_confluences >= 2
+                    and (touched_upper_bb or rsi >= Decimal("60.0"))
                     and bear_confidence > bull_confidence
                 ):
                     sl_pct = self.params["base_sl_pct"]

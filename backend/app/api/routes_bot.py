@@ -80,12 +80,7 @@ async def get_ai_stats():
 @router.post("/start")
 async def start_bot():
     """Starts the trading loop and resets resting/target locks."""
-    import time
-    if hasattr(bot_runner, "session_manager"):
-        if bot_runner.session_manager.is_target_reached:
-            bot_runner.session_manager.reset_session()
-        bot_runner.session_manager.cycle_state = "ACTIVE"
-        bot_runner.session_manager.cycle_start_time = time.time()
+    bot_runner.reset_and_resume_trading()
 
     if not bot_runner.exchange.is_initialized:
         result = await bot_runner.start()
@@ -95,7 +90,6 @@ async def start_bot():
             "message": result.summary_message
         }
     else:
-        bot_runner.is_running = True
         await ws_hub.broadcast("STATUS_UPDATE", bot_runner.get_intuitive_telemetry())
         return {
             "success": True,

@@ -128,6 +128,7 @@ class TelegramAdminHandler:
         """Friendly start command from mobile button."""
         self.is_panic_stopped = False
         self.risk_manager.circuit_breaker.manual_reset()
+        self.risk_manager.reset_daily_limits(self.risk_manager.daily_equity)
         self.state_reconciler.is_locked_for_review = False
         return (
             "🟢 <b>¡TRADING INICIADO CON ÉXITO!</b>\n"
