@@ -125,8 +125,17 @@ class TelegramClient:
         except httpx.ReadTimeout:
             # Normal for long-polling — no updates in the window
             return []
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 409:
+                logger.warning("[TELEGRAM] 409 Conflict en getUpdates. Esperando 5s para liberar sesión previa...")
+                await asyncio.sleep(5)
+            else:
+                logger.error(f"[TELEGRAM] getUpdates HTTP {e.response.status_code}: {e}")
+                await asyncio.sleep(2)
+            return []
         except Exception as e:
             logger.error(f"[TELEGRAM] getUpdates failed: {e}")
+            await asyncio.sleep(2)
             return []
 
     async def close(self) -> None:

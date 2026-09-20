@@ -47,6 +47,8 @@ class SessionManager:
         if current_equity and current_equity > Decimal("0"):
             self.session_starting_equity = current_equity
             self.current_equity = current_equity
+        elif self.current_equity > Decimal("0"):
+            self.session_starting_equity = self.current_equity
         self.session_net_profit = Decimal("0.00")
         self.session_closed_trades = 0
         self.session_wins = 0
@@ -303,15 +305,4 @@ class SessionManager:
             "win_rate": round((self.session_wins / self.session_closed_trades * 100), 1) if self.session_closed_trades > 0 else 0.0,
         }
 
-    def reset_session(self) -> None:
-        """Resets target and counters for a new trading day or explicit command."""
-        self.session_starting_equity = self.current_equity
-        self.session_net_profit = Decimal("0.00")
-        self.session_closed_trades = 0
-        self.session_wins = 0
-        self.session_losses = 0
-        self.is_target_reached = False
-        self.target_reached_at = None
-        self.cycle_start_time = time.time()
-        self.cycle_state = "ACTIVE"
-        logger.info(f"[SESSION MANAGER] Session reset. New baseline: ${self.session_starting_equity:,.2f} USD")
+

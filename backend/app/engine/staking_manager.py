@@ -17,14 +17,14 @@ from app.core.logger import logger
 class StakingManager:
     """Manages dynamic position sizing, conviction-based scaling, and recovery sequences."""
 
-    MAX_ALLOWED_STAKE: Decimal = Decimal("200.0")
+    MAX_ALLOWED_STAKE: Decimal = Decimal("100.0")
 
     def __init__(self, steps: Optional[List[float]] = None):
-        self.steps: List[Decimal] = [
-            to_decimal(str(s)) for s in (steps or settings.IQOPTION_MARTINGALE_STEPS or [50.0, 100.0, 200.0])
-        ]
-        if not self.steps:
-            self.steps = [Decimal("50.0"), Decimal("100.0"), Decimal("200.0")]
+        if steps:
+            self.steps = [to_decimal(str(s)) for s in steps]
+        else:
+            # Default institutional 2-step sizing (0.25% base, 0.55% recovery)
+            self.steps = [Decimal("25.0"), Decimal("55.0")]
             
         self.current_step_index: int = 0
         self.consecutive_losses: int = 0
@@ -32,8 +32,17 @@ class StakingManager:
         self.total_martingale_cycles_completed: int = 0
         self.history: List[Dict[str, Any]] = []
 
+    def sync_account_equity(self, equity: Decimal) -> None:
+        """Dynamically scales base stake to 0.25% of account balance (safe proportional growth)."""
+        if equity > Decimal("10.0"):
+            base = max(Decimal("1.0"), min(Decimal("50.0"), round(equity * Decimal("0.0025"), 0)))
+            step2 = max(Decimal("2.0"), min(Decimal("110.0"), round(base * Decimal("2.2"), 0)))
+            self.steps = [base, step2]
+            self.current_step_index = 0
+            logger.info(f"[STAKING] Dynamic staking synced for ${equity:,.2f} USD: Paso 1=${base:,.0f} USD, Paso 2=${step2:,.0f} USD")
+
     def get_current_stake(self) -> Decimal:
-        """Returns the stake amount in USD for the next trade, bounded by max $200."""
+        """Returns the stake amount in USD for the next trade."""
         if 0 <= self.current_step_index < len(self.steps):
             raw_stake = self.steps[self.current_step_index]
         else:
@@ -46,18 +55,17 @@ class StakingManager:
         confluences: int = 1
     ) -> tuple[Decimal, str]:
         """
-        Calculates stake size based on exact 3-step recovery sequence ($50 -> $100 -> $200):
-        - Paso 1 (Base): $50 USD
-        - Paso 2 (Recuperación tras 1 pérdida): $100 USD
-        - Paso 3 (Recuperación tras 2 pérdidas): $200 USD (Hard Cap de Seguridad con Ultra-Filtro)
-        - Tras ganar en cualquier paso: Reseteo inmediato al Paso 1 ($50 USD).
-        - Si se pierde en el Paso 3: Freno de seguridad y reseteo al Paso 1 ($50 USD) para no arriesgar la cuenta.
+        Calculates stake size based on exact 2-step institutional recovery:
+        - Paso 1 (Base): 0.25% del capital (ej. $25 USD en cuenta de $10K)
+        - Paso 2 (Recuperación Inteligente): 0.55% del capital (ej. $55 USD)
+        - Al ganar: Reseteo inmediato a Paso 1 ($25 USD).
+        - Si se pierde Paso 2: Freno de seguridad y reseteo a Paso 1 ($25 USD) con pérdida máxima de solo 0.8%.
         """
         if self.current_step_index > 0:
             stake = self.get_current_stake()
             reason = f"Recuperación Inteligente (Paso {self.current_step_index + 1}: ${stake:,.0f} USD)"
         else:
-            stake = self.steps[0] if self.steps else Decimal("50.0")
+            stake = self.steps[0] if self.steps else Decimal("25.0")
             reason = f"Stake Base Estándar ${stake:,.0f} USD"
 
         final_stake = min(self.MAX_ALLOWED_STAKE, max(Decimal("1.0"), stake))

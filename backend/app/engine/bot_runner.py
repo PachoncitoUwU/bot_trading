@@ -328,30 +328,13 @@ class BotRunner:
                 logger.info(f"[RUNNER] Enfriamiento activo para {symbol} ({int(remaining_cooldown)}s restantes). Entrada omitida.")
                 return
 
-            # 2. FILTRO DE CONVICCIÓN Y DISCIPLINA GRÁFICA EN RECUPERACIÓN:
-            # - Paso 2 ($100 USD): Requiere confianza >= 65% y mínimo 2 confluencias
-            if current_step == 2:
-                if sig_conf < Decimal("0.65") or sig_confluences < 2:
+            # 2. FILTRO DE CONVICCIÓN EN RECUPERACIÓN (Paso 2):
+            # Requiere confianza >= 55% y mínimo 2 confluencias comprobadas
+            if current_step >= 2:
+                if sig_conf < Decimal("0.55") or sig_confluences < 2:
                     logger.info(
-                        f"[RUNNER] Paso 2 ($100 USD) en espera: Requiere confianza >= 65% y confluencias >= 2 "
-                        f"(actual: conf={sig_conf:.2f}, confs={sig_confluences}). Esperando mejor oportunidad gráfica."
-                    )
-                    return
-
-            # - Paso 3 ($200 USD - Operación Crítica): ULTRA-FILTRO ESTRATÉGICO
-            #   No entrar por entrar: requiere >= 70% confianza, >= 2 confluencias y patrón gráfico comprobado
-            elif current_step == 3:
-                valid_high_conviction_patterns = [
-                    "martillo", "pinbar", "estrella fugaz", "absorción",
-                    "cruce dorado", "cruce bajista", "cruce",
-                    "impulso", "envolvente", "confluencia", "soporte", "resistencia"
-                ]
-                has_valid_pattern = any(p in pat_name.lower() for p in valid_high_conviction_patterns)
-                if sig_conf < Decimal("0.70") or sig_confluences < 2 or not has_valid_pattern:
-                    logger.info(
-                        f"[RUNNER] 🛑 Paso 3 ($200 USD) PROTEGIDO: Operación no cumple filtros de máxima convicción "
-                        f"(conf={sig_conf:.2f} >= 0.70, confs={sig_confluences} >= 2, patrón='{pat_name}'). "
-                        f"El bot espera pacientemente un patrón gráfico claro para no arriesgar los $200 USD."
+                        f"[RUNNER] Paso {current_step} de recuperación en espera: Requiere confianza >= 55% y confluencias >= 2 "
+                        f"(actual: conf={sig_conf:.2f}, confs={sig_confluences}). Esperando mejor confluencia técnica."
                     )
                     return
 
@@ -844,6 +827,7 @@ class BotRunner:
                 p.allocated_notional for p in self.risk_manager.active_positions.values()
             )
             self.available_cash = max(Decimal("0"), usdt - allocated)
+            self.staking_manager.sync_account_equity(self.equity)
             logger.info(
                 f"[RUNNER] Balance refreshed: equity=${self.equity:.2f}, "
                 f"available=${self.available_cash:.2f}"
