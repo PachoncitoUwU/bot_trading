@@ -121,10 +121,14 @@ class BotRunner:
             self.is_running = False
             return reconcile_result
 
-        self.is_running = False
+        auto_start = getattr(settings, "AUTO_START_TRADING", True)
+        self.is_running = auto_start
         self.risk_manager.update_daily_equity(self.equity)
         self.session_manager.sync_starting_equity(self.equity)
-        logger.info("[RUNNER] Bot inicializado con éxito en modo STANDBY (Esperando comando de inicio desde Telegram).")
+        if self.is_running:
+            logger.info("[RUNNER] Bot inicializado y OPERANDO en vivo 24/7 de forma autónoma.")
+        else:
+            logger.info("[RUNNER] Bot inicializado con éxito en modo STANDBY (Esperando comando de inicio desde Telegram).")
         return reconcile_result
 
     # ──────────────────────────────────────────────────────────────────────────

@@ -65,6 +65,7 @@ try:
         APP_ENV: str = "development"
         PORT: int = 8000
         DATABASE_URL: str = "sqlite+aiosqlite:///./trading_bot.db"
+        AUTO_START_TRADING: bool = True
 
     settings = Settings()
 
@@ -99,5 +100,6 @@ except ImportError:
         APP_ENV: str = os.getenv("APP_ENV", "development")
         PORT: int = int(os.getenv("PORT", "8000"))
         DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./trading_bot.db")
+        AUTO_START_TRADING: bool = os.getenv("AUTO_START_TRADING", "true").lower() == "true"
 
     settings = Settings()

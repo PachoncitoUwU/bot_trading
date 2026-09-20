@@ -68,21 +68,29 @@ class TelegramPollingLoop:
         if not text or not chat_id:
             return
 
-        # Security: only respond to the configured admin chat
-        if chat_id != settings.TELEGRAM_ADMIN_CHAT_ID:
-            logger.warning(f"[TELEGRAM POLLING] Message from unauthorized chat {chat_id} ignored.")
+        # Security: allow if chat_id or user_id matches configured admin
+        is_admin = (
+            chat_id == settings.TELEGRAM_ADMIN_CHAT_ID
+            or user_id == settings.TELEGRAM_ADMIN_CHAT_ID
+            or (settings.TELEGRAM_CHANNEL_ID and chat_id == settings.TELEGRAM_CHANNEL_ID)
+        )
+        if not is_admin:
+            logger.warning(f"[TELEGRAM POLLING] Message from unauthorized chat {chat_id} (user {user_id}) ignored.")
             return
 
+        clean = text.lower().strip()
         logger.info(f"[TELEGRAM POLLING] Command from @{username}: {text}")
         keyboard = bot_runner.admin_handler.get_main_menu_keyboard()
 
         # Iniciar Bot / Trading
         if (
-            text.startswith("/iniciar")
-            or text.startswith("/start_bot")
-            or text == "▶️ Iniciar Trading"
-            or text == "▶️ Iniciar Bot"
-            or text == "/start"
+            clean.startswith("/iniciar")
+            or clean.startswith("/start")
+            or "iniciar trading" in clean
+            or "iniciar bot" in clean
+            or clean == "▶️ iniciar trading"
+            or clean == "▶️ iniciar bot"
+            or clean in ("iniciar", "start", "arrancar", "activar", "comenzar", "run")
         ):
             import time
             await bot_runner._refresh_balance()
@@ -97,20 +105,28 @@ class TelegramPollingLoop:
 
         # Pausar / Detener Trading
         elif (
-            text.startswith("/parar")
-            or text.startswith("/stop")
-            or text.startswith("/pausar")
-            or text == "⏹️ Parar Trading"
-            or text == "⏹️ Pausar Bot"
+            clean.startswith("/parar")
+            or clean.startswith("/stop")
+            or clean.startswith("/pausar")
+            or "parar trading" in clean
+            or "parar bot" in clean
+            or "pausar bot" in clean
+            or clean == "⏹️ parar trading"
+            or clean == "⏹️ pausar bot"
+            or clean in ("parar", "stop", "pausar", "detener", "apagar", "pause")
         ):
             bot_runner.is_running = False
             response = bot_runner.admin_handler.handle_pause_bot(username)
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Configurar Meta (3%, 4%, 5%, AUTO)
-        elif text == "⚙️ Fijar Meta" or text.startswith("/set_meta") or text in ("/meta_3", "/meta_4", "/meta_5", "/meta_auto"):
+        elif (
+            clean in ("⚙️ fijar meta", "fijar meta", "configurar meta")
+            or clean.startswith("/set_meta")
+            or clean in ("/meta_3", "/meta_4", "/meta_5", "/meta_auto")
+        ):
             if hasattr(bot_runner, "session_manager"):
-                if text == "⚙️ Fijar Meta":
+                if clean in ("⚙️ fijar meta", "fijar meta", "configurar meta"):
                     response = (
                         "⚙️ <b>CONFIGURAR META DE GANANCIA</b>\n"
                         "━━━━━━━━━━━━━━━━━━━━\n"
@@ -130,7 +146,13 @@ class TelegramPollingLoop:
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Meta de Ganancia y Progreso
-        elif text == "🎯 Meta (3% a 5%)" or text in ("/meta", "/target", "/progreso") or text.startswith("/meta ") or text.startswith("/target "):
+        elif (
+            "meta" in clean
+            or "progreso" in clean
+            or clean in ("/meta", "/target", "/progreso")
+            or clean.startswith("/meta ")
+            or clean.startswith("/target ")
+        ):
             if hasattr(bot_runner, "session_manager"):
                 progress_data = bot_runner.session_manager.get_progress_data()
                 response = bot_runner.admin_handler.handle_target_progress_report(progress_data)
@@ -139,7 +161,13 @@ class TelegramPollingLoop:
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Asesor de Horarios de Mercado (Cuándo Operar)
-        elif text == "🕒 Cuándo Operar" or text.startswith("/horario") or text.startswith("/horas_mercado") or text.startswith("/when"):
+        elif (
+            "cuándo operar" in clean
+            or "cuando operar" in clean
+            or clean.startswith("/horario")
+            or clean.startswith("/horas_mercado")
+            or clean.startswith("/when")
+        ):
             if hasattr(bot_runner, "session_manager"):
                 regime = bot_runner.session_manager.get_market_regime()
             else:
@@ -148,7 +176,7 @@ class TelegramPollingLoop:
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Modo Horas (Ciclo 1h operando / 1h descanso)
-        elif text.startswith("/horas") or text.startswith("/ciclo") or text == "⏱️ Modo Horas":
+        elif clean.startswith("/horas") or clean.startswith("/ciclo") or "modo horas" in clean:
             if hasattr(bot_runner, "session_manager"):
                 response = bot_runner.admin_handler.handle_toggle_hourly_cycle(bot_runner.session_manager)
             else:
@@ -156,7 +184,14 @@ class TelegramPollingLoop:
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Estado y Balance
-        elif text.startswith("/status") or text.startswith("/balance") or "Saldo" in text or text == "📊 Estado y Balance":
+        elif (
+            clean.startswith("/status")
+            or clean.startswith("/balance")
+            or clean.startswith("/estado")
+            or "saldo" in clean
+            or "balance" in clean
+            or "estado" in clean
+        ):
             await bot_runner._refresh_balance()
             thoughts = bot_runner.strategy.get_latest_thoughts() if hasattr(bot_runner.strategy, "get_latest_thoughts") else {}
             t_mode = bot_runner.session_manager.target_mode if hasattr(bot_runner, "session_manager") else "3.5%"
@@ -170,7 +205,7 @@ class TelegramPollingLoop:
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Radar en Vivo de la IA
-        elif text.startswith("/radar") or text == "🎯 Radar IA":
+        elif clean.startswith("/radar") or "radar" in clean:
             thoughts = bot_runner.strategy.get_latest_thoughts() if hasattr(bot_runner.strategy, "get_latest_thoughts") else {}
             lines = []
             if thoughts:
@@ -190,13 +225,13 @@ class TelegramPollingLoop:
             await self._client.send_message(chat_id, resp, reply_markup=keyboard)
 
         # Forward-Testing Estadístico 300 Trades
-        elif text.startswith("/forward_test") or text.startswith("/test") or text.startswith("/hito") or text == "🔬 Forward-Test":
+        elif clean.startswith("/forward_test") or clean.startswith("/test") or clean.startswith("/hito") or "forward" in clean:
             from app.engine.forward_test_tracker import forward_test_tracker
             response = forward_test_tracker.format_milestone_report(forward_test_tracker.data["total_trades"])
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Ganancias y Rendimiento
-        elif text.startswith("/ganancias") or text.startswith("/pnl") or text == "💰 Ganancias / PnL":
+        elif clean.startswith("/ganancias") or clean.startswith("/pnl") or "ganancias" in clean or "pnl" in clean:
             response = bot_runner.admin_handler.handle_pnl_report(
                 equity=bot_runner.equity,
                 initial_equity=getattr(bot_runner, "initial_equity", bot_runner.equity),
@@ -204,25 +239,25 @@ class TelegramPollingLoop:
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Sentimiento e Inteligencia Web
-        elif text.startswith("/sentimiento") or text == "🌐 Sentimiento Mercado":
+        elif clean.startswith("/sentimiento") or "sentimiento" in clean:
             from app.services.sentiment_service import sentiment_service
             sentiment_data = await sentiment_service.get_sentiment()
             response = bot_runner.admin_handler.handle_sentiment_report(sentiment_data)
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Aprendizaje de la IA
-        elif text.startswith("/ia") or text.startswith("/learn") or text == "🧠 Aprendizaje IA":
+        elif clean.startswith("/ia") or clean.startswith("/learn") or "aprendizaje" in clean:
             ai_stats = bot_runner.strategy.get_stats() if hasattr(bot_runner.strategy, "get_stats") else {}
             response = bot_runner.admin_handler.handle_ai_stats_report(ai_stats)
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Parada de Emergencia
-        elif text.startswith("/panic"):
+        elif clean.startswith("/panic"):
             response = bot_runner.admin_handler.handle_panic_command(username)
             bot_runner.is_running = False
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
-        elif text.startswith("/resume_after_review"):
+        elif clean.startswith("/resume_after_review"):
             parts = text.split(maxsplit=1)
             reason = parts[1].strip() if len(parts) > 1 else ""
             response = bot_runner.admin_handler.handle_resume_after_review(
@@ -233,7 +268,7 @@ class TelegramPollingLoop:
                 bot_runner.is_running = True
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
-        elif text.startswith("/help") or text.startswith("/ayuda") or text == "ℹ️ Ayuda":
+        elif clean.startswith("/help") or clean.startswith("/ayuda") or "ayuda" in clean:
             await self._client.send_message(chat_id, _help_message(), reply_markup=keyboard)
 
         else:
@@ -244,7 +279,7 @@ class TelegramPollingLoop:
             )
 
     async def _handle_callback(self, callback_query: Dict[str, Any]) -> None:
-        """Handles inline keyboard button presses (signal approve/reject)."""
+        """Handles inline keyboard button presses (signal approve/reject, start/stop)."""
         from app.engine.bot_runner import bot_runner
 
         callback_id = callback_query.get("id", "")
@@ -268,6 +303,23 @@ class TelegramPollingLoop:
                 user_id=username,
             )
             await self._client.send_message(chat_id, response)
+        elif data in ("start_bot", "iniciar", "start"):
+            import time
+            await bot_runner._refresh_balance()
+            if hasattr(bot_runner, "session_manager"):
+                bot_runner.session_manager.reset_session(current_equity=bot_runner.equity)
+                bot_runner.session_manager.cycle_state = "ACTIVE"
+                bot_runner.session_manager.cycle_start_time = time.time()
+            bot_runner.is_running = True
+            keyboard = bot_runner.admin_handler.get_main_menu_keyboard()
+            t_pct = bot_runner.session_manager.target_mode if hasattr(bot_runner, "session_manager") else "3.5%"
+            response = bot_runner.admin_handler.handle_start_bot(username, target_pct=t_pct)
+            await self._client.send_message(chat_id, response, reply_markup=keyboard)
+        elif data in ("pause_bot", "stop_bot", "parar", "stop"):
+            bot_runner.is_running = False
+            keyboard = bot_runner.admin_handler.get_main_menu_keyboard()
+            response = bot_runner.admin_handler.handle_pause_bot(username)
+            await self._client.send_message(chat_id, response, reply_markup=keyboard)
         else:
             logger.warning(f"[TELEGRAM POLLING] Unknown callback data: {data}")
 

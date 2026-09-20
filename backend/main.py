@@ -99,16 +99,26 @@ async def lifespan(app: FastAPI):
 
         # Send startup notification with interactive keyboard
         keyboard = bot_runner.admin_handler.get_main_menu_keyboard()
+        status_header = (
+            f"🟢 <b>BOT CONECTADO Y OPERANDO 24/7 ({settings.BOT_MODE.value})</b>"
+            if bot_runner.is_running
+            else f"🟡 <b>BOT CONECTADO EN MODO STANDBY ({settings.BOT_MODE.value})</b>"
+        )
+        status_footer = (
+            "<i>El bot ya está escaneando el mercado y buscando entradas activamente en la nube.</i>"
+            if bot_runner.is_running
+            else "<i>Para comenzar a operar, presiona el botón:</i> <b>▶️ Iniciar Trading</b>"
+        )
         await telegram_client.send_message(
             settings.TELEGRAM_ADMIN_CHAT_ID,
-            f"🟡 <b>BOT CONECTADO EN MODO STANDBY ({settings.BOT_MODE.value})</b>\n"
+            f"{status_header}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"Exchange: <code>{settings.EXCHANGE_ID.upper()}</code>\n"
             f"Saldo actual: <b>${bot_runner.equity:,.2f} USD</b>\n"
             f"🎯 <b>Meta programada:</b> +3.5% (Asegura ganancia y se apaga)\n"
             f"🛡️ <b>Freno Stop Loss:</b> -3.0% (Protección de capital)\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>Para comenzar a operar, presiona el botón:</i> <b>▶️ Iniciar Trading</b>",
+            f"{status_footer}",
             reply_markup=keyboard
         )
 
