@@ -147,26 +147,32 @@ class ForwardTestTracker:
         max_dd = self.data["max_drawdown_usd"]
         max_dd_pct = self.data["max_drawdown_pct"]
 
-        # Format per-pattern breakdown
+        # Format per-pattern breakdown with strict sample size (n) and n < 20 warnings
         pattern_lines = []
         for pat, stats in sorted(self.data["patterns"].items(), key=lambda x: (x[1]["wins"] + x[1]["losses"]), reverse=True):
             p_tot = stats["wins"] + stats["losses"]
             p_wr = stats["win_rate"]
             p_pnl = stats["net_pnl"]
-            icon = "🟢" if p_wr >= 54.0 else "🔴"
-            pattern_lines.append(
-                f"{icon} <b>{pat}:</b> {stats['wins']}W / {stats['losses']}L ({p_wr}% WR) | PnL: <b>${p_pnl:+,.2f}</b>"
-            )
+            if p_tot < 20:
+                pattern_lines.append(
+                    f"⚠️ <b>{pat} (n={p_tot}):</b> {stats['wins']}W / {stats['losses']}L | "
+                    f"<i>[Muestra insuficiente (&lt;20 trades) — Sin significancia]</i> | PnL: <b>${p_pnl:+,.2f}</b>"
+                )
+            else:
+                icon = "🟢" if p_wr >= 54.05 else "🔴"
+                pattern_lines.append(
+                    f"{icon} <b>{pat} (n={p_tot}):</b> {stats['wins']}W / {stats['losses']}L (<b>{p_wr}% WR</b>) | PnL: <b>${p_pnl:+,.2f}</b>"
+                )
 
         pat_str = "\n".join(pattern_lines) if pattern_lines else "<i>Sin patrones suficientes aún.</i>"
 
         # Statistical evaluation against break-even (54.05%)
         if ci_lower >= 54.05:
-            stat_verdict = "✅ <b>VENTAJA ESTADÍSTICA CONFIRMADA AL 95%</b> (Límite inferior > 54%)"
+            stat_verdict = "✅ <b>VENTAJA ESTADÍSTICA CONFIRMADA AL 95%</b> (Límite inferior > 54.05%)"
         elif wr >= 54.05 and ci_lower < 54.05:
-            stat_verdict = "🟡 <b>EN ZONA POSITIVA PERO DENTRO DE MARGEN DE ERROR</b> (Continuar muestreo)"
+            stat_verdict = f"🟡 <b>PROMEDIO EN {wr}% PERO DENTRO DE MARGEN DE ERROR</b> (Límite inferior en {ci_lower}%, continuar muestreo)"
         else:
-            stat_verdict = "⚠️ <b>SIN VENTAJA ESTADÍSTICA DEMOSTRADA</b> (Por debajo del 54%)"
+            stat_verdict = f"⚠️ <b>SIN VENTAJA ESTADÍSTICA DEMOSTRADA</b> (WR en {wr}%, límite inferior en {ci_lower}%)"
 
         pct_prog = round((total / self.target_trades) * 100.0, 1)
         bar_len = int(round(pct_prog / 10))
@@ -175,18 +181,23 @@ class ForwardTestTracker:
         return (
             f"📊 <b>FORWARD-TEST HITO: {trade_num} / {self.target_trades} OPERACIONES</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎯 <b>Progreso del Ciclo:</b> {bar} <b>{pct_prog}%</b>\n\n"
-            f"📈 <b>Tasa de Acierto (Win Rate):</b> <b>{wr}%</b>\n"
+            f"🎯 <b>Progreso del Ciclo:</b> {bar} <b>{pct_prog}%</b> (n={total})\n\n"
+            f"📈 <b>Win Rate Global:</b> <b>{wr}%</b> (n={total})\n"
             f"🔬 <b>Intervalo Confianza (95% Wilson):</b> [<b>{ci_lower}%</b> — <b>{ci_upper}%</b>]\n"
             f"💰 <b>PnL Neto Acumulado:</b> <b>${pnl:+,.2f} USD</b>\n"
             f"📉 <b>Max Drawdown Observado:</b> ${max_dd:,.2f} ({max_dd_pct}%)\n"
-            f"🛡 <b>Gestión:</b> Flat $25 USD (0.25%) | CERO Martingala\n"
+            f"🛡 <b>Gestión:</b> Flat $25 USD (0.25%) | <b>CERO Martingala</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"💡 <b>Diagnóstico Estadístico:</b>\n{stat_verdict}\n\n"
-            f"📋 <b>DESGLOSE PATRÓN POR PATRÓN:</b>\n"
+            f"💡 <b>Diagnóstico Estadístico Actual:</b>\n{stat_verdict}\n\n"
+            f"📋 <b>DESGLOSE POR PATRÓN (Mínimo n=20 para validez):</b>\n"
             f"{pat_str}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>Forward-Testing científico 100% en tiempo real hacia adelante (Demo).</i>"
+            f"⚖️ <b>CRITERIOS ESTABLECIDOS AL TERMINAR 300 TRADES:</b>\n"
+            f"• <b>Límite inferior IC &gt; 54%:</b> Paso a real con micro-capital.\n"
+            f"• <b>Promedio 50-54% (o IC inferior &lt; 54%):</b> No pasar a real, continuar ciclo demo de 300 sin alterar reglas.\n"
+            f"• <b>Win Rate &lt; 50%:</b> Estrategia descartada por completo.\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"<i>Reglas 100% congeladas hasta la operación 300.</i>"
         )
 
     def get_summary(self) -> Dict[str, Any]:
