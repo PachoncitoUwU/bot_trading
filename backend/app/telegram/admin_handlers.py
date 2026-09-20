@@ -69,34 +69,59 @@ class TelegramAdminHandler:
             "<i>El bot ha reanudado el escaneo de mercado de forma segura.</i>"
         )
 
-    def handle_status_command(self, current_equity: Decimal, available_cash: Optional[Decimal] = None, mode: BotMode = BotMode.PAPER) -> str:
-        """Friendly account status and balance report."""
-        mode_str = "DEMO (Precios en Vivo de Binance)" if mode == BotMode.PAPER else "CUENTA REAL BINANCE 🚀"
+    def handle_status_command(
+        self,
+        current_equity: Decimal,
+        available_cash: Optional[Decimal] = None,
+        mode: BotMode = BotMode.PAPER,
+        is_running: bool = False,
+        ai_thoughts: Optional[Dict[str, str]] = None,
+        target_mode: str = "3.5%"
+    ) -> str:
+        """Friendly account status, balance, and live AI thoughts report."""
+        exch = settings.EXCHANGE_ID.upper()
+        mode_str = f"DEMO / PRACTICE ({exch})" if mode in (BotMode.PAPER, BotMode.TESTNET) else f"CUENTA REAL {exch} 🚀"
         cash_val = available_cash if available_cash is not None else current_equity
 
         pos_lines = []
         if self.risk_manager.active_positions:
             for sym, pos in self.risk_manager.active_positions.items():
                 pos_lines.append(
-                    f"  • <b>{sym}:</b> Comprado a ${pos.entry_price:,.2f} "
-                    f"(🎯 Meta venta: ${pos.take_profit:,.2f} | 🛡 Freno: ${pos.stop_loss:,.2f})"
+                    f"  • <b>{sym}:</b> Operación abierta (🎯 TP: +3.0% | 🛡 SL: -1.5%)"
                 )
         else:
-            pos_lines.append("  • <i>Ninguna moneda comprada ahora. La IA está escaneando el mercado...</i>")
+            if is_running:
+                pos_lines.append("  • <i>Sin operaciones abiertas en este segundo. Escaneando confluencias...</i>")
+            else:
+                pos_lines.append("  • <i>El bot está en pausa. Pulsa '▶️ Iniciar Trading' para empezar.</i>")
 
         pos_str = "\n".join(pos_lines)
 
+        # AI live thoughts on pairs
+        thought_lines = []
+        if ai_thoughts and is_running:
+            for s, t in list(ai_thoughts.items())[:4]:
+                clean_s = s.replace("-OTC", "")
+                thought_lines.append(f"  • <b>{clean_s}:</b> <i>{t}</i>")
+        thought_str = "\n".join(thought_lines) if thought_lines else "  • <i>Analizando velas de 1m en búsqueda de sobrecompra/sobreventa...</i>"
+
+        status_badge = "🟢 <b>ACTIVO Y ESCANEANDO EN VIVO</b>" if is_running else "⏸️ <b>EN PAUSA / STANDBY</b>"
+
         return (
-            "📊 <b>TU CUENTA Y ESTADO ACTUAL</b>\n"
+            "📊 <b>ESTADO DE TU CUENTA Y RADAR IA</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            f"💼 <b>Tipo de Cuenta:</b> <code>{mode_str}</code>\n"
-            f"💰 <b>Dinero Total en Cuenta:</b> <b>${current_equity:,.2f} USDT</b>\n"
-            f"💵 <b>Dinero Libre para Operar:</b> ${cash_val:,.2f} USDT\n"
+            f"🤖 <b>Estado del Bot:</b> {status_badge}\n"
+            f"💼 <b>Cuenta:</b> <code>{mode_str}</code>\n"
+            f"💰 <b>Saldo en Cuenta:</b> <b>${current_equity:,.2f} USD</b>\n"
+            f"🎯 <b>Meta de Sesión:</b> <b>+{target_mode}</b> (Auto-apagado protector)\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "📈 <b>Operaciones Activas Ahora Mismo:</b>\n"
+            "📈 <b>Operaciones en Curso:</b>\n"
             f"{pos_str}\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "🛡 <b>Protección de Fondos:</b> Normal y Activa ✅"
+            "🧠 <b>Diagnóstico en Vivo de la IA:</b>\n"
+            f"{thought_str}\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🛡 <b>Protección de Fondos:</b> Stop Loss de Sesión -3% Activo ✅"
         )
 
     def handle_start_bot(self, user_id: str, target_pct: str = "3.5%") -> str:

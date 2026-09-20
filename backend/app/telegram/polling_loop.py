@@ -149,11 +149,36 @@ class TelegramPollingLoop:
         # Estado y Balance
         elif text.startswith("/status") or text.startswith("/balance") or "Saldo" in text or text == "📊 Estado y Balance":
             await bot_runner._refresh_balance()
+            thoughts = bot_runner.strategy.get_latest_thoughts() if hasattr(bot_runner.strategy, "get_latest_thoughts") else {}
+            t_mode = bot_runner.session_manager.target_mode if hasattr(bot_runner, "session_manager") else "3.5%"
             response = bot_runner.admin_handler.handle_status_command(
                 current_equity=bot_runner.equity,
                 mode=bot_runner.mode,
+                is_running=bot_runner.is_running,
+                ai_thoughts=thoughts,
+                target_mode=t_mode,
             )
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
+
+        # Radar en Vivo de la IA
+        elif text.startswith("/radar") or text == "🎯 Radar IA":
+            thoughts = bot_runner.strategy.get_latest_thoughts() if hasattr(bot_runner.strategy, "get_latest_thoughts") else {}
+            lines = []
+            if thoughts:
+                for s, t in thoughts.items():
+                    clean_s = s.replace("-OTC", "")
+                    lines.append(f"🪙 <b>{clean_s}:</b> <i>{t}</i>")
+                msg_body = "\n\n".join(lines)
+            else:
+                msg_body = "• <i>Analizando mercado... Las confluencias se calcularán en el próximo bloque de velas de 1m.</i>"
+            resp = (
+                "🎯 <b>RADAR DE ESCANEO DE LA IA EN VIVO</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"{msg_body}\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "<i>El bot solo ejecutará una orden cuando coincidan: Bollinger Extremo + RSI Extremo + Vela de Rechazo.</i>"
+            )
+            await self._client.send_message(chat_id, resp, reply_markup=keyboard)
 
         # Ganancias y Rendimiento
         elif text.startswith("/ganancias") or text.startswith("/pnl") or text == "💰 Ganancias / PnL":
