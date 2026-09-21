@@ -50,7 +50,7 @@ class BotRunner:
         self.circuit_breaker = CircuitBreaker(max_consecutive_errors=settings.CIRCUIT_BREAKER_MAX_ERRORS)
         self.risk_manager = RiskManager(circuit_breaker=self.circuit_breaker)
         self.staking_manager = StakingManager()
-        self.session_manager = SessionManager(target_mode="3.5%", hourly_cycle_enabled=False)
+        self.session_manager = SessionManager(target_mode="MARATON", hourly_cycle_enabled=False)
         self.reconciler = StateReconciler(self.exchange)
         self.signal_manager = InteractiveSignalManager(default_ttl_seconds=settings.TELEGRAM_SIGNAL_TTL_SECONDS)
         self.admin_handler = TelegramAdminHandler(self.risk_manager, self.reconciler, self.signal_manager)
@@ -72,7 +72,7 @@ class BotRunner:
         self._tick_count: int = 0
         self.trade_history: List[Dict[str, Any]] = []
         self.duration_minutes: int = 1
-        self.max_concurrent_binary_trades: int = 1  # Modo Francotirador 1 a 1: 1 sola operación a la vez para máxima concentración y riesgo cero de sobreexposición
+        self.max_concurrent_binary_trades: int = 2  # Permite hasta 2 operaciones simultáneas en diferentes pares
         self._pair_cooldowns: Dict[str, float] = {}  # Anti-revancha: cooldown por símbolo
         self.equity_curve: List[Dict[str, Any]] = [
             {"time": "Inicio", "equity": 10000.0, "pnl": 0.0, "is_win": True}

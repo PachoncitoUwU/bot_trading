@@ -51,7 +51,7 @@ try:
                 return [s.strip() for s in v.split(",") if s.strip()]
             return v
 
-        MAX_DAILY_DRAWDOWN_PCT: Decimal = Decimal("3.0")
+        MAX_DAILY_DRAWDOWN_PCT: Decimal = Decimal("100.0")
         MAX_ACCOUNT_EXPOSURE_PCT: Decimal = Decimal("20.0")
         MAX_RISK_PER_TRADE_PCT: Decimal = Decimal("1.0")
         CIRCUIT_BREAKER_MAX_ERRORS: int = 3
@@ -86,7 +86,7 @@ except ImportError:
         TRADING_SYMBOLS: List[str] = field(default_factory=lambda: ["BTC/USDT", "ETH/USDT"])
         DEFAULT_TIMEFRAME: str = os.getenv("DEFAULT_TIMEFRAME", "1h")
 
-        MAX_DAILY_DRAWDOWN_PCT: Decimal = Decimal(os.getenv("MAX_DAILY_DRAWDOWN_PCT", "3.0"))
+        MAX_DAILY_DRAWDOWN_PCT: Decimal = Decimal(os.getenv("MAX_DAILY_DRAWDOWN_PCT", "100.0"))
         MAX_ACCOUNT_EXPOSURE_PCT: Decimal = Decimal(os.getenv("MAX_ACCOUNT_EXPOSURE_PCT", "20.0"))
         MAX_RISK_PER_TRADE_PCT: Decimal = Decimal(os.getenv("MAX_RISK_PER_TRADE_PCT", "1.0"))
         CIRCUIT_BREAKER_MAX_ERRORS: int = int(os.getenv("CIRCUIT_BREAKER_MAX_ERRORS", "3"))
