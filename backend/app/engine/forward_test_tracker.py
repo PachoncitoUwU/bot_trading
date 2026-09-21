@@ -113,11 +113,13 @@ class ForwardTestTracker:
         pat_tot = pat_obj["wins"] + pat_obj["losses"]
         pat_obj["win_rate"] = round((pat_obj["wins"] / pat_tot) * 100.0, 1)
 
-        # Trade log entry
+        # Trade log entry with strict regime tagging (OTC vs REAL_MARKET)
+        regime = "OTC" if "-OTC" in symbol.upper() else "REAL_MARKET"
         self.data["trades"].append({
             "num": trade_num,
             "time": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
             "symbol": symbol,
+            "regime": regime,
             "pattern": clean_pat,
             "side": side,
             "stake": stake,
@@ -135,6 +137,39 @@ class ForwardTestTracker:
             milestone_msg = self.format_milestone_report(trade_num)
 
         return is_milestone, milestone_msg
+
+    def reset_300_cycle(self, starting_balance: float = 9499.57) -> None:
+        """Archives preliminary test data and restarts the 300-trade cycle with 100% frozen rules."""
+        archive_entry = {
+            "archived_at": datetime.utcnow().isoformat(),
+            "total_trades": self.data.get("total_trades", 0),
+            "wins": self.data.get("wins", 0),
+            "losses": self.data.get("losses", 0),
+            "net_pnl": self.data.get("net_pnl", 0.0),
+            "trades": self.data.get("trades", [])
+        }
+        archives = self.data.get("archives", [])
+        archives.append(archive_entry)
+
+        self.data = {
+            "cycle_active": True,
+            "start_time": datetime.utcnow().isoformat(),
+            "target_trades": self.target_trades,
+            "total_trades": 0,
+            "wins": 0,
+            "losses": 0,
+            "net_pnl": 0.0,
+            "starting_balance": round(starting_balance, 2),
+            "current_balance": round(starting_balance, 2),
+            "peak_balance": round(starting_balance, 2),
+            "max_drawdown_usd": 0.0,
+            "max_drawdown_pct": 0.0,
+            "patterns": {},
+            "trades": [],
+            "archives": archives
+        }
+        self._save()
+        logger.info(f"[FORWARD TEST] 🔄 Ciclo 300 reiniciado a 0/300 con REGLAS CONGELADAS. Saldo base: ${starting_balance:.2f} USD")
 
     def format_milestone_report(self, trade_num: int) -> str:
         """Generates statistical milestone summary."""
@@ -174,15 +209,21 @@ class ForwardTestTracker:
         else:
             stat_verdict = f"⚠️ <b>SIN VENTAJA ESTADÍSTICA DEMOSTRADA</b> (WR en {wr}%, límite inferior en {ci_lower}%)"
 
-        pct_prog = round((total / self.target_trades) * 100.0, 1)
-        bar_len = int(round(pct_prog / 10))
-        bar = "🟩" * bar_len + "⬜" * (10 - bar_len)
+        # Regime breakdown: OTC vs Real Market
+        otc_trades = [t for t in self.data["trades"] if t.get("regime") == "OTC"]
+        real_trades = [t for t in self.data["trades"] if t.get("regime") == "REAL_MARKET"]
+        otc_wins = sum(1 for t in otc_trades if t.get("is_win"))
+        real_wins = sum(1 for t in real_trades if t.get("is_win"))
+        otc_wr = round((otc_wins / len(otc_trades)) * 100.0, 1) if otc_trades else 0.0
+        real_wr = round((real_wins / len(real_trades)) * 100.0, 1) if real_trades else 0.0
 
         return (
             f"📊 <b>FORWARD-TEST HITO: {trade_num} / {self.target_trades} OPERACIONES</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"🎯 <b>Progreso del Ciclo:</b> {bar} <b>{pct_prog}%</b> (n={total})\n\n"
             f"📈 <b>Win Rate Global:</b> <b>{wr}%</b> (n={total})\n"
+            f"• 🪐 <b>OTC (Sintético):</b> <b>{otc_wr}%</b> ({otc_wins}W / {len(otc_trades) - otc_wins}L | n={len(otc_trades)})\n"
+            f"• 🏦 <b>Mercado Real:</b> <b>{real_wr}%</b> ({real_wins}W / {len(real_trades) - real_wins}L | n={len(real_trades)})\n\n"
             f"🔬 <b>Intervalo Confianza (95% Wilson):</b> [<b>{ci_lower}%</b> — <b>{ci_upper}%</b>]\n"
             f"💰 <b>PnL Neto Acumulado:</b> <b>${pnl:+,.2f} USD</b>\n"
             f"📉 <b>Max Drawdown Observado:</b> ${max_dd:,.2f} ({max_dd_pct}%)\n"

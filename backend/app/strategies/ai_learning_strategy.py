@@ -242,7 +242,8 @@ class AILearningStrategy(BaseStrategy):
             )
 
             pattern_stats = self.learned_patterns.get(pattern, {"weight": 1.0, "wins": 0, "losses": 0})
-            pat_w = Decimal(str(pattern_stats.get("weight", 1.0)))
+            # FORWARD-TEST CIENTÍFICO 300 TRADES: Pesos 100% congelados en 1.0x (Cero mutación en vivo)
+            pat_w = Decimal("1.0")
 
             # ──────────────────────────────────────────────────────────────────
             # Bullish Sniper Evaluation (CALL / Subida)
@@ -403,27 +404,9 @@ class AILearningStrategy(BaseStrategy):
                     bear_confidence = Decimal("0.0")
                     bear_reasons.append("🛡️ Filtro Anti-Contra-Tendencia: Tendencia alcista activa, PROHIBIDO PUT sin rechazo extremo confirmado")
 
-            # ──────────────────────────────────────────────────────────────────
-            # Dynamic Curriculum Learning: Active Exploration vs. Error Minimization
-            # ──────────────────────────────────────────────────────────────────
-            pat_wins = pattern_stats.get("wins", 0)
-            pat_losses = pattern_stats.get("losses", 0)
-            pat_total = pat_wins + pat_losses
-            pat_wr = pattern_stats.get("win_rate", 50.0)
-
-            # Auto-calibración adaptativa en función del historial aprendido
-            if pat_total >= 4 and pat_wr < 45.0:
-                # Patrón con historial desfavorable: elevar filtro para minimizar errores
-                active_min_conf = Decimal("0.62")
-                learning_stage = "🛡️ Minimización de Error"
-            elif pat_total >= 4 and pat_wr >= 55.0:
-                # Patrón ganador con ventaja comprobada: umbral de alta sensibilidad
-                active_min_conf = Decimal("0.45")
-                learning_stage = "🚀 Explotación Ventaja IA"
-            else:
-                # Patrón en fase de entrenamiento activo: umbral ágil de exploración
-                active_min_conf = self.params["min_confidence"]  # 0.48
-                learning_stage = "🧠 Aprendizaje Activo"
+            # FORWARD-TEST CIENTÍFICO 300 TRADES: Umbral de confianza 100% congelado en 0.58
+            active_min_conf = Decimal("0.58")
+            learning_stage = "🛡️ Reglas Congeladas (300 Trades)"
 
             # Real-time thought display for user UI
             dominant = "CALL (Alcista)" if bull_confidence >= bear_confidence else "PUT (Bajista)"
@@ -549,13 +532,11 @@ class AILearningStrategy(BaseStrategy):
         stats = self.learned_patterns[pattern_name]
         if is_win:
             stats["wins"] += 1
-            # Boost weight gradually up to 1.5x
-            stats["weight"] = min(1.5, round(stats["weight"] + 0.05, 3))
         else:
             stats["losses"] += 1
-            # Reduce weight down to 0.6x to avoid repeated losses on failing patterns
-            stats["weight"] = max(0.6, round(stats["weight"] - 0.05, 3))
 
+        # FORWARD-TEST CIENTÍFICO: Los pesos permanecen congelados en 1.0x (Cero auto-ajustes en tiempo real)
+        stats["weight"] = 1.0
         stats["total_pnl"] = round(stats.get("total_pnl", 0.0) + float(pnl_pct), 2)
         total = stats["wins"] + stats["losses"]
         stats["win_rate"] = round((stats["wins"] / total) * 100, 1) if total > 0 else 0.0
