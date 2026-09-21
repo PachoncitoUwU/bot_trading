@@ -32,12 +32,25 @@ class HeartbeatWatchdog:
         status_icon = "🟢" if circuit_status == CircuitBreakerStatus.NORMAL and is_reconciled else "🔴"
         now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
+        ft_info = ""
+        try:
+            from app.engine.forward_test_tracker import forward_test_tracker
+            sm = forward_test_tracker.get_summary()
+            cad = forward_test_tracker.calculate_cadence()
+            ft_info = (
+                f"🔬 <b>Muestra Real:</b> {sm['total_trades']}/50 ops ({sm['win_rate']}% WR)\n"
+                f"⏱ <b>Cadencia:</b> {cad['cadence_str']} (Est: {cad['est_days_to_checkpoint_50']})\n"
+            )
+        except Exception:
+            pass
+
         msg = (
             f"{status_icon} <b>BOT HEARTBEAT | ESTADO VITAL</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"⏱ <b>Uptime:</b> {self.get_uptime_str()}\n"
             f"📡 <b>Modo:</b> <code>{mode.value}</code>\n"
             f"💼 <b>Capital Actual:</b> ${equity:,.2f}\n"
+            f"{ft_info}"
             f"📊 <b>Posiciones Abiertas:</b> {active_positions_count}\n"
             f"🛡 <b>Circuit Breaker:</b> <code>{circuit_status.value.upper()}</code>\n"
             f"🔒 <b>Reconciliación:</b> {'OK' if is_reconciled else 'BLOQUEO DE REVISIÓN'}\n"

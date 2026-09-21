@@ -138,10 +138,48 @@ class ForwardTestTracker:
 
         return is_milestone, milestone_msg
 
-    def reset_300_cycle(self, starting_balance: float = 9499.57) -> None:
-        """Archives preliminary test data and restarts the 300-trade cycle with 100% frozen rules."""
+    def calculate_cadence(self) -> Dict[str, Any]:
+        """Calculates trade cadence (trades/day) and projected days to reach checkpoints."""
+        start_str = self.data.get("start_time")
+        total = self.data.get("total_trades", 0)
+        trades_per_day = 0.0
+        cadence_str = "Midiendo tiempo de muestra..."
+        est_days_50 = "N/A"
+        elapsed_hours = 0.0
+
+        if start_str:
+            try:
+                clean_iso = start_str.replace("Z", "+00:00")
+                start_dt = datetime.fromisoformat(clean_iso)
+                if start_dt.tzinfo:
+                    start_dt = start_dt.replace(tzinfo=None)
+                elapsed_hours = max(0.01, (datetime.utcnow() - start_dt).total_seconds() / 3600.0)
+                if elapsed_hours >= 0.5 and total > 0:
+                    trades_per_day = round((total / elapsed_hours) * 24.0, 1)
+                    cadence_str = f"~{trades_per_day} trades/día"
+                    remaining_50 = max(0, 50 - total)
+                    if trades_per_day > 0 and remaining_50 > 0:
+                        est_days = round(remaining_50 / trades_per_day, 1)
+                        est_days_50 = f"~{est_days} días"
+                    elif remaining_50 == 0:
+                        est_days_50 = "¡Alcanzado!"
+                elif total == 0:
+                    cadence_str = "Esperando primeras señales de mercado real"
+            except Exception as e:
+                logger.debug(f"[CADENCE] Calculation error: {e}")
+
+        return {
+            "elapsed_hours": round(elapsed_hours, 1),
+            "trades_per_day": trades_per_day,
+            "cadence_str": cadence_str,
+            "est_days_to_checkpoint_50": est_days_50
+        }
+
+    def reset_300_cycle(self, starting_balance: float = 9230.31, cycle_name: str = "REAL_FOREX_MKT") -> None:
+        """Archives preliminary test data and restarts the cycle with 100% frozen rules."""
         archive_entry = {
             "archived_at": datetime.utcnow().isoformat(),
+            "cycle_label": self.data.get("cycle_label", "OTC_SYNTHETIC"),
             "total_trades": self.data.get("total_trades", 0),
             "wins": self.data.get("wins", 0),
             "losses": self.data.get("losses", 0),
@@ -153,8 +191,10 @@ class ForwardTestTracker:
 
         self.data = {
             "cycle_active": True,
+            "cycle_label": cycle_name,
             "start_time": datetime.utcnow().isoformat(),
             "target_trades": self.target_trades,
+            "checkpoint_trades": 50,
             "total_trades": 0,
             "wins": 0,
             "losses": 0,
@@ -169,7 +209,7 @@ class ForwardTestTracker:
             "archives": archives
         }
         self._save()
-        logger.info(f"[FORWARD TEST] 🔄 Ciclo 300 reiniciado a 0/300 con REGLAS CONGELADAS. Saldo base: ${starting_balance:.2f} USD")
+        logger.info(f"[FORWARD TEST] 🔄 Ciclo {cycle_name} reiniciado a 0/{self.target_trades} con REGLAS CONGELADAS. Saldo base: ${starting_balance:.2f} USD")
 
     def format_milestone_report(self, trade_num: int) -> str:
         """Generates statistical milestone summary."""
@@ -181,6 +221,11 @@ class ForwardTestTracker:
         pnl = self.data["net_pnl"]
         max_dd = self.data["max_drawdown_usd"]
         max_dd_pct = self.data["max_drawdown_pct"]
+
+        pct_prog = round((total / self.target_trades) * 100, 1) if self.target_trades > 0 else 0.0
+        filled = min(10, max(0, int(pct_prog // 10)))
+        bar = "█" * filled + "░" * (10 - filled)
+        cadence = self.calculate_cadence()
 
         # Format per-pattern breakdown with strict sample size (n) and n < 20 warnings
         pattern_lines = []
@@ -217,13 +262,18 @@ class ForwardTestTracker:
         otc_wr = round((otc_wins / len(otc_trades)) * 100.0, 1) if otc_trades else 0.0
         real_wr = round((real_wins / len(real_trades)) * 100.0, 1) if real_trades else 0.0
 
+        cycle_label = self.data.get("cycle_label", "REAL_FOREX_MKT")
+
         return (
-            f"📊 <b>FORWARD-TEST HITO: {trade_num} / {self.target_trades} OPERACIONES</b>\n"
+            f"📊 <b>FORWARD-TEST: {trade_num} / 50 CHECKPOINT ({self.target_trades} TOTAL)</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🎯 <b>Progreso del Ciclo:</b> {bar} <b>{pct_prog}%</b> (n={total})\n\n"
+            f"🏷 <b>Ciclo:</b> <code>{cycle_label}</code> (Muestra limpia 100% no-OTC)\n"
+            f"🎯 <b>Progreso:</b> {bar} <b>{pct_prog}%</b> (n={total})\n"
+            f"⏱ <b>Ritmo Operativo:</b> {cadence['cadence_str']}\n"
+            f"⏳ <b>Tiempo est. a n=50:</b> {cadence['est_days_to_checkpoint_50']}\n\n"
             f"📈 <b>Win Rate Global:</b> <b>{wr}%</b> (n={total})\n"
-            f"• 🪐 <b>OTC (Sintético):</b> <b>{otc_wr}%</b> ({otc_wins}W / {len(otc_trades) - otc_wins}L | n={len(otc_trades)})\n"
-            f"• 🏦 <b>Mercado Real:</b> <b>{real_wr}%</b> ({real_wins}W / {len(real_trades) - real_wins}L | n={len(real_trades)})\n\n"
+            f"• 🏦 <b>Mercado Real Forex:</b> <b>{real_wr}%</b> ({real_wins}W / {len(real_trades) - real_wins}L | n={len(real_trades)})\n"
+            f"• 🪐 <b>OTC (Ciclo actual):</b> <b>{otc_wr}%</b> (n={len(otc_trades)})\n\n"
             f"🔬 <b>Intervalo Confianza (95% Wilson):</b> [<b>{ci_lower}%</b> — <b>{ci_upper}%</b>]\n"
             f"💰 <b>PnL Neto Acumulado:</b> <b>${pnl:+,.2f} USD</b>\n"
             f"📉 <b>Max Drawdown Observado:</b> ${max_dd:,.2f} ({max_dd_pct}%)\n"
@@ -233,12 +283,12 @@ class ForwardTestTracker:
             f"📋 <b>DESGLOSE POR PATRÓN (Mínimo n=20 para validez):</b>\n"
             f"{pat_str}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"⚖️ <b>CRITERIOS ESTABLECIDOS AL TERMINAR 300 TRADES:</b>\n"
-            f"• <b>Límite inferior IC &gt; 54%:</b> Paso a real con micro-capital.\n"
-            f"• <b>Promedio 50-54% (o IC inferior &lt; 54%):</b> No pasar a real, continuar ciclo demo de 300 sin alterar reglas.\n"
-            f"• <b>Win Rate &lt; 50%:</b> Estrategia descartada por completo.\n"
+            f"⚖️ <b>CRITERIOS ESTABLECIDOS:</b>\n"
+            f"• <b>Checkpoint n=50:</b> Evaluar si el IC sugiere edge o si se descarta el modelo.\n"
+            f"• <b>Límite inferior IC &gt; 54%:</b> Viabilidad estadística demostrada.\n"
+            f"• <b>Win Rate &lt; 50%:</b> Modelo sin ventaja predictiva.\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"<i>Reglas 100% congeladas hasta la operación 300.</i>"
+            f"<i>Reglas 100% congeladas. Sin mutación de pesos ni mezcla de datos.</i>"
         )
 
     def get_summary(self) -> Dict[str, Any]:

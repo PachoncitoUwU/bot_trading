@@ -7,11 +7,11 @@
     "win_rate": 98.7
   },
   "Impulso Bajista Fuerte": {
-    "wins": 67,
-    "losses": 72,
-    "weight": 0.8,
-    "total_pnl": -1257.0,
-    "win_rate": 48.2
+    "wins": 69,
+    "losses": 73,
+    "weight": 0.85,
+    "total_pnl": -1183.0,
+    "win_rate": 48.6
   },
   "Cruce Dorado IA": {
     "wins": 14,
@@ -21,11 +21,11 @@
     "win_rate": 58.3
   },
   "Envolvente Alcista": {
-    "wins": 15,
+    "wins": 16,
     "losses": 21,
-    "weight": 0.75,
-    "total_pnl": -792.0,
-    "win_rate": 41.7
+    "weight": 0.8,
+    "total_pnl": -705.0,
+    "win_rate": 43.2
   },
   "Estrella Fugaz / Rechazo Bajista": {
     "wins": 19,
@@ -42,18 +42,18 @@
     "win_rate": 52.1
   },
   "Impulso Alcista Fuerte": {
-    "wins": 44,
-    "losses": 55,
+    "wins": 45,
+    "losses": 56,
     "weight": 0.7,
-    "total_pnl": -1465.0,
-    "win_rate": 44.4
+    "total_pnl": -1478.0,
+    "win_rate": 44.6
   },
   "Envolvente Bajista": {
-    "wins": 45,
-    "losses": 41,
-    "weight": 1.2,
-    "total_pnl": -171.0,
-    "win_rate": 52.3
+    "wins": 46,
+    "losses": 43,
+    "weight": 1.15,
+    "total_pnl": -284.0,
+    "win_rate": 51.7
   },
   "Cruce Muerte IA": {
     "wins": 2,
@@ -63,32 +63,32 @@
     "win_rate": 16.7
   },
   "Martillo / Pinbar Alcista": {
-    "wins": 49,
-    "losses": 59,
-    "weight": 0.65,
-    "total_pnl": -1634.0,
-    "win_rate": 45.4
+    "wins": 51,
+    "losses": 64,
+    "weight": 0.6,
+    "total_pnl": -1960.0,
+    "win_rate": 44.3
   },
   "Estrella Fugaz / Pinbar Bajista": {
-    "wins": 36,
+    "wins": 39,
     "losses": 46,
-    "weight": 0.6,
-    "total_pnl": -1379.7,
-    "win_rate": 43.9
+    "weight": 0.75,
+    "total_pnl": -1118.7,
+    "win_rate": 45.9
   },
   "Confluencia Sniper CALL": {
-    "wins": 23,
-    "losses": 23,
-    "weight": 1.0,
-    "total_pnl": -298.0,
-    "win_rate": 50.0
+    "wins": 24,
+    "losses": 25,
+    "weight": 0.95,
+    "total_pnl": -411.0,
+    "win_rate": 49.0
   },
   "Confluencia Sniper PUT": {
-    "wins": 17,
+    "wins": 19,
     "losses": 18,
-    "weight": 0.95,
-    "total_pnl": -318.0,
-    "win_rate": 48.6
+    "weight": 1.05,
+    "total_pnl": -144.0,
+    "win_rate": 51.4
   },
   "Doji": {
     "wins": 0,
