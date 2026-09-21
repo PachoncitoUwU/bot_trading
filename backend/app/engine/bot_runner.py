@@ -479,7 +479,8 @@ class BotRunner:
 
         if settings.EXCHANGE_ID.lower() == "iqoption":
             cost = filled_amount
-            # Watch binary option resolution in background with exact expiration duration
+            inst_type = order_resp.get("instrument", "BINARY")
+            # Watch binary option resolution in background with exact expiration duration and instrument type
             asyncio.create_task(self._watch_iqoption_binary_resolution(
                 exchange_order_id=exchange_order_id,
                 symbol=symbol,
@@ -488,6 +489,7 @@ class BotRunner:
                 duration_minutes=trade_duration,
                 entry_price=fill_price,
                 sig=sig,
+                instrument=inst_type,
             ))
         else:
             cost = filled_amount * fill_price
@@ -525,12 +527,13 @@ class BotRunner:
         duration_minutes: int = 1,
         entry_price: Optional[Decimal] = None,
         sig: Optional[Any] = None,
+        instrument: str = "BINARY",
     ):
-        """Waits for binary option to expire, fetches actual PnL, sends visual result chart."""
+        """Waits for binary/digital option to expire, fetches actual PnL, sends visual result chart."""
         dur_str = f"{duration_minutes} Minuto" if duration_minutes == 1 else f"{duration_minutes} Minutos"
         side_label = "CALL (SUBIDA 🟢)" if side == OrderSide.BUY else "PUT (BAJADA 🔴)"
         side_str = "CALL" if side == OrderSide.BUY else "PUT"
-        logger.info(f"[IQOPTION WATCHER] Monitoreando orden {exchange_order_id} ({symbol} {side_label} por ${stake}, {dur_str})...")
+        logger.info(f"[IQOPTION WATCHER] Monitoreando orden {exchange_order_id} ({symbol} {side_label} por ${stake}, {dur_str}, {instrument})...")
 
         wait_seconds = max(50, (duration_minutes * 60) + 4)
         await asyncio.sleep(wait_seconds)
@@ -540,7 +543,7 @@ class BotRunner:
                 is_closed, profit = await self.exchange.check_order_result(exchange_order_id)
                 if is_closed:
                     is_win = (profit > 0)
-                    logger.info(f"[IQOPTION WATCHER] Orden {exchange_order_id} FINALIZADA ({dur_str}). Ganada={is_win}, Ganancia Neta=${profit:.2f}")
+                    logger.info(f"[IQOPTION WATCHER] Orden {exchange_order_id} FINALIZADA ({dur_str}, {instrument}). Ganada={is_win}, Ganancia Neta=${profit:.2f}")
 
                     # Registrar resultado en el gestor de martingala
                     staking_res = self.staking_manager.record_trade_result(is_win, profit, symbol)
@@ -558,8 +561,7 @@ class BotRunner:
                             symbol=symbol,
                             pnl_pct=pnl_pct_dec,
                             is_win=is_win,
-                            pattern_name=sig.pattern_name if sig else "Estrategia IA",
-                            exit_reason=f"Expiracion {duration_minutes}m en IQ Option"
+                            pattern_name=getattr(sig, "pattern_name", "") or "General Sniper",
                         )
 
                     # Actualizar estadísticas
@@ -567,6 +569,7 @@ class BotRunner:
                     trade_record = {
                         "symbol": symbol,
                         "side": side_label,
+                        "instrument": instrument,
                         "invested_usd": float(stake),
                         "pnl_usd": round(profit, 2),
                         "pnl_pct": round((profit / float(stake)) * 100, 2) if float(stake) > 0 else 0.0,
@@ -590,6 +593,7 @@ class BotRunner:
                             is_win=is_win,
                             profit_usd=profit,
                             current_balance=float(self.equity),
+                            instrument=instrument,
                         )
                         if is_milestone and milestone_msg:
                             await self.broadcast_service.send_broadcast(milestone_msg)

@@ -312,18 +312,37 @@ class AILearningStrategy(BaseStrategy):
                 bull_confidence += Decimal("0.15")
                 bull_reasons.append("A favor de tendencia EMA 50")
 
+            # Current candle geometric metrics
+            curr_body = abs(closes[-1] - opens[-1])
+            curr_range = highs[-1] - lows[-1] if (highs[-1] - lows[-1]) > Decimal("0") else Decimal("0.00001")
+            curr_lower_wick = min(opens[-1], closes[-1]) - lows[-1]
+            curr_upper_wick = highs[-1] - max(opens[-1], closes[-1])
+            ema_dist_pct = (abs(current_price - slow_ema) / slow_ema * Decimal("100.0")) if slow_ema > Decimal("0") else Decimal("0")
+
             # REGLA DE ORO ANTI-CONTRA-TENDENCIA: Prohibido apostar CALL contra tendencia bajista
+            # Excepción Cuantificada al 100%: Solo permitida si hay agotamiento extremo comprobado matemáticamente:
+            # 1. Mecha inferior >= 2.0x cuerpo (Rechazo contundente de mínimos)
+            # 2. Mecha superior <= 0.20x rango total de la vela (Sin rechazo bajista arriba)
+            # 3. RSI(14) <= 30.0 (Sobreventa profunda) con inflexión alcista confirmada (RSI_t > RSI_t-1)
+            # 4. Mínimo de la vela perforando la Banda Inferior de Bollinger (low <= lower_bb)
+            # 5. Distancia a la EMA 50 >= 0.04% del precio (Garantiza sobre-extensión del impulso bajista)
             is_downtrend = (current_price < slow_ema) or (fast_ema < mid_ema and current_price < trend_ema)
             if is_downtrend:
-                has_massive_reversal = (
-                    ("Martillo" in pattern or "Pinbar Alcista" in pattern)
-                    and rsi <= Decimal("32.0")
+                has_quantified_reversal = (
+                    curr_lower_wick >= (curr_body * Decimal("2.0"))
+                    and curr_upper_wick <= (curr_range * Decimal("0.20"))
+                    and rsi <= Decimal("30.0")
                     and rsi > prev_rsi
-                    and touched_lower_bb
+                    and lows[-1] <= lower_bb
+                    and ema_dist_pct >= Decimal("0.04")
                 )
-                if not has_massive_reversal:
+                if not has_quantified_reversal:
                     bull_confidence = Decimal("0.0")
-                    bull_reasons.append("🛡️ Filtro Anti-Contra-Tendencia: Tendencia bajista activa, PROHIBIDO CALL sin rechazo extremo confirmado")
+                    bull_reasons.append(
+                        f"🛡️ Filtro Anti-Contra-Tendencia: Tendencia bajista activa (EMA 50). "
+                        f"CALL bloqueado sin reversión cuantificada (Wick={float(curr_lower_wick/curr_body if curr_body > 0 else 0):.1f}x/2.0x, "
+                        f"RSI={float(rsi):.1f}/30.0, Dist={float(ema_dist_pct):.3f}%/0.04%)"
+                    )
 
             # ──────────────────────────────────────────────────────────────────
             # Bearish Sniper Evaluation (PUT / Bajada)
@@ -392,17 +411,29 @@ class AILearningStrategy(BaseStrategy):
                 bear_reasons.append("A favor de tendencia EMA 50")
 
             # REGLA DE ORO ANTI-CONTRA-TENDENCIA: Prohibido apostar PUT contra tendencia alcista
+            # Excepción Cuantificada al 100%: Solo permitida si hay agotamiento extremo comprobado matemáticamente:
+            # 1. Mecha superior >= 2.0x cuerpo (Rechazo contundente de máximos)
+            # 2. Mecha inferior <= 0.20x rango total de la vela (Sin rechazo alcista abajo)
+            # 3. RSI(14) >= 70.0 (Sobrecompra profunda) con inflexión bajista confirmada (RSI_t < RSI_t-1)
+            # 4. Máximo de la vela perforando la Banda Superior de Bollinger (high >= upper_bb)
+            # 5. Distancia a la EMA 50 >= 0.04% del precio (Garantiza sobre-extensión del impulso alcista)
             is_uptrend = (current_price > slow_ema) or (fast_ema > mid_ema and current_price > trend_ema)
             if is_uptrend:
-                has_massive_reversal = (
-                    ("Estrella Fugaz" in pattern or "Pinbar Bajista" in pattern)
-                    and rsi >= Decimal("68.0")
+                has_quantified_reversal = (
+                    curr_upper_wick >= (curr_body * Decimal("2.0"))
+                    and curr_lower_wick <= (curr_range * Decimal("0.20"))
+                    and rsi >= Decimal("70.0")
                     and rsi < prev_rsi
-                    and touched_upper_bb
+                    and highs[-1] >= upper_bb
+                    and ema_dist_pct >= Decimal("0.04")
                 )
-                if not has_massive_reversal:
+                if not has_quantified_reversal:
                     bear_confidence = Decimal("0.0")
-                    bear_reasons.append("🛡️ Filtro Anti-Contra-Tendencia: Tendencia alcista activa, PROHIBIDO PUT sin rechazo extremo confirmado")
+                    bear_reasons.append(
+                        f"🛡️ Filtro Anti-Contra-Tendencia: Tendencia alcista activa (EMA 50). "
+                        f"PUT bloqueado sin reversión cuantificada (Wick={float(curr_upper_wick/curr_body if curr_body > 0 else 0):.1f}x/2.0x, "
+                        f"RSI={float(rsi):.1f}/70.0, Dist={float(ema_dist_pct):.3f}%/0.04%)"
+                    )
 
             # FILTRO FRANCOTIRADOR DE ALTA PRECISIÓN: Umbral de confianza elevado a 0.65
             active_min_conf = Decimal("0.65")

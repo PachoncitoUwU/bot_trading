@@ -75,6 +75,7 @@ class ForwardTestTracker:
         is_win: bool,
         profit_usd: float,
         current_balance: float,
+        instrument: str = "BINARY",
     ) -> Tuple[bool, Optional[str]]:
         """
         Records a completed forward-test trade.
@@ -113,13 +114,15 @@ class ForwardTestTracker:
         pat_tot = pat_obj["wins"] + pat_obj["losses"]
         pat_obj["win_rate"] = round((pat_obj["wins"] / pat_tot) * 100.0, 1)
 
-        # Trade log entry with strict regime tagging (OTC vs REAL_MARKET)
+        # Trade log entry with strict regime (OTC vs REAL_MARKET) and instrument tagging (BINARY vs DIGITAL)
         regime = "OTC" if "-OTC" in symbol.upper() else "REAL_MARKET"
+        inst = instrument.upper() if instrument else "BINARY"
         self.data["trades"].append({
             "num": trade_num,
             "time": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
             "symbol": symbol,
             "regime": regime,
+            "instrument": inst,
             "pattern": clean_pat,
             "side": side,
             "stake": stake,
@@ -262,6 +265,14 @@ class ForwardTestTracker:
         otc_wr = round((otc_wins / len(otc_trades)) * 100.0, 1) if otc_trades else 0.0
         real_wr = round((real_wins / len(real_trades)) * 100.0, 1) if real_trades else 0.0
 
+        # Instrument breakdown: BINARY vs DIGITAL
+        bin_trades = [t for t in self.data["trades"] if t.get("instrument") == "BINARY"]
+        dig_trades = [t for t in self.data["trades"] if t.get("instrument") == "DIGITAL"]
+        bin_wins = sum(1 for t in bin_trades if t.get("is_win"))
+        dig_wins = sum(1 for t in dig_trades if t.get("is_win"))
+        bin_wr = round((bin_wins / len(bin_trades)) * 100.0, 1) if bin_trades else 0.0
+        dig_wr = round((dig_wins / len(dig_trades)) * 100.0, 1) if dig_trades else 0.0
+
         cycle_label = self.data.get("cycle_label", "REAL_FOREX_MKT")
 
         return (
@@ -273,7 +284,9 @@ class ForwardTestTracker:
             f"⏳ <b>Tiempo est. a n=50:</b> {cadence['est_days_to_checkpoint_50']}\n\n"
             f"📈 <b>Win Rate Global:</b> <b>{wr}%</b> (n={total})\n"
             f"• 🏦 <b>Mercado Real Forex:</b> <b>{real_wr}%</b> ({real_wins}W / {len(real_trades) - real_wins}L | n={len(real_trades)})\n"
-            f"• 🪐 <b>OTC (Ciclo actual):</b> <b>{otc_wr}%</b> (n={len(otc_trades)})\n\n"
+            f"• 🪐 <b>OTC (Ciclo actual):</b> <b>{otc_wr}%</b> (n={len(otc_trades)})\n"
+            f"• ⚡ <b>Opciones Binarias:</b> <b>{bin_wr}%</b> ({bin_wins}W / {len(bin_trades) - bin_wins}L | n={len(bin_trades)})\n"
+            f"• 📱 <b>Opciones Digitales:</b> <b>{dig_wr}%</b> ({dig_wins}W / {len(dig_trades) - dig_wins}L | n={len(dig_trades)})\n\n"
             f"🔬 <b>Intervalo Confianza (95% Wilson):</b> [<b>{ci_lower}%</b> — <b>{ci_upper}%</b>]\n"
             f"💰 <b>PnL Neto Acumulado:</b> <b>${pnl:+,.2f} USD</b>\n"
             f"📉 <b>Max Drawdown Observado:</b> ${max_dd:,.2f} ({max_dd_pct}%)\n"

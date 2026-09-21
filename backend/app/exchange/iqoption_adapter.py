@@ -168,6 +168,7 @@ class IQOptionAdapter:
                 await asyncio.to_thread(self.client.change_balance, self.balance_type)
 
             logger.info(f"[IQOPTION] Placing {action.upper()} on {active} for ${invest_amount} (Requested duration: {duration_minutes}m)...")
+            instrument_type = "BINARY"
             
             # 1. Try Standard Binary / Turbo Option
             status, order_id = await asyncio.to_thread(
@@ -180,6 +181,8 @@ class IQOptionAdapter:
                 status, order_id = await asyncio.to_thread(
                     self.client.buy, invest_amount, active, action, 1
                 )
+                if status:
+                    instrument_type = "BINARY"
                 
             # 3. Fallback: Try Digital Option (Digital Spot)
             if not status and hasattr(self.client, "buy_digital_spot"):
@@ -191,6 +194,7 @@ class IQOptionAdapter:
                     if dig_status and dig_id:
                         status = True
                         order_id = dig_id
+                        instrument_type = "DIGITAL"
                         logger.info(f"[IQOPTION] Digital Option placed successfully! ID: {order_id}")
                 except Exception as dig_err:
                     logger.debug(f"[IQOPTION] Digital option attempt failed: {dig_err}")
@@ -201,14 +205,16 @@ class IQOptionAdapter:
                     "id": None,
                     "status": "rejected",
                     "symbol": symbol,
+                    "instrument": instrument_type,
                     "reason": "BROKER_REJECTED"
                 }
 
-            logger.info(f"[IQOPTION] Order placed successfully! Order ID: {order_id}")
+            logger.info(f"[IQOPTION] Order placed successfully! Instrument: {instrument_type} | Order ID: {order_id}")
             return {
                 "id": str(order_id),
                 "client_order_id": client_order_id,
                 "symbol": symbol,
+                "instrument": instrument_type,
                 "side": side.value,
                 "amount": invest_amount,
                 "status": "filled",
