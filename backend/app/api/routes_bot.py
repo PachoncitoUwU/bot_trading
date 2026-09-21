@@ -148,37 +148,48 @@ async def get_session_target():
 @router.post("/force-trade")
 async def force_trade(symbol: str = "EURUSD-OTC", direction: str = "BUY", duration_minutes: Optional[int] = None):
     """Forces an immediate test trade on the exchange to demonstrate execution."""
-    from app.strategies.base_strategy import StrategySignal
-    from app.core.constants import OrderSide, SignalType
-    from app.core.decimal_math import to_decimal
-    
-    if not bot_runner.exchange.is_initialized:
-        await bot_runner.start()
+    try:
+        from app.strategies.base_strategy import StrategySignal
+        from app.core.constants import OrderSide, SignalType
+        from app.core.decimal_math import to_decimal
         
-    if duration_minutes:
-        bot_runner.set_timeframe(f"{duration_minutes}m")
+        if not bot_runner.exchange.is_initialized:
+            await bot_runner.start()
+            
+        if duration_minutes:
+            bot_runner.set_timeframe(f"{duration_minutes}m")
 
-    sig_type = SignalType.BUY if direction.upper() in ("BUY", "CALL") else SignalType.SELL
-    order_side = OrderSide.BUY if sig_type == SignalType.BUY else OrderSide.SELL
-    candles = await bot_runner.exchange.fetch_ohlcv(symbol, limit=5)
-    last_p = to_decimal(candles[-1][4]) if candles else Decimal("1.1400")
-    
-    dur_str = f"{bot_runner.duration_minutes} Minuto" if bot_runner.duration_minutes == 1 else f"{bot_runner.duration_minutes} Minutos"
-    dir_label = "CALL (Subida 🟢)" if order_side == OrderSide.BUY else "PUT (Bajada 🔴)"
-    sig = StrategySignal(
-        symbol=symbol,
-        signal_type=sig_type,
-        price=last_p,
-        pattern_name=f"Operación Manual ({dir_label} - {dur_str}) ⚡",
-        reason=f"Demostración en vivo ejecutada desde el panel web ({dur_str}) con captura gráfica"
-    )
-    
-    await bot_runner._execute_buy(sig, symbol, side=order_side)
+        sig_type = SignalType.BUY if direction.upper() in ("BUY", "CALL") else SignalType.SELL
+        order_side = OrderSide.BUY if sig_type == SignalType.BUY else OrderSide.SELL
+        candles = await bot_runner.exchange.fetch_ohlcv(symbol, limit=5)
+        last_p = to_decimal(candles[-1][4]) if candles else Decimal("1.1400")
         
-    return {
-        "success": True,
-        "message": f"¡Orden {direction.upper()} ({dur_str}) enviada con éxito a IQ Option en {symbol}! Mira tu pantalla de IQ Option."
-    }
+        dur_str = f"{bot_runner.duration_minutes} Minuto" if bot_runner.duration_minutes == 1 else f"{bot_runner.duration_minutes} Minutos"
+        dir_label = "CALL (Subida 🟢)" if order_side == OrderSide.BUY else "PUT (Bajada 🔴)"
+        sig = StrategySignal(
+            symbol=symbol,
+            signal_type=sig_type,
+            price=last_p,
+            pattern_name=f"Operación Manual ({dir_label} - {dur_str}) ⚡",
+            reason=f"Demostración en vivo ejecutada desde el panel web ({dur_str}) con captura gráfica"
+        )
+        
+        await bot_runner._execute_buy(sig, symbol, side=order_side)
+            
+        return {
+            "success": True,
+            "message": f"¡Orden {direction.upper()} ({dur_str}) enviada con éxito a IQ Option en {symbol}! Mira tu pantalla de IQ Option."
+        }
+    except Exception as e:
+        import traceback
+        logger.error(f"[FORCE-TRADE ERROR] {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc(),
+        }
+
 
 
 @router.post("/timeframe")
@@ -260,3 +271,38 @@ async def run_backtest(req: BacktestRequest):
         },
         "overfitting_diagnosis": wf_result.overfitting_warning
     }
+
+
+@router.get("/market-schedule")
+async def get_market_schedule():
+    """Diagnostic endpoint to inspect open binary/turbo/digital pairs and payouts on IQ Option."""
+    if not bot_runner.exchange.is_initialized or not hasattr(bot_runner.exchange, "client"):
+        return {"status": "uninitialized"}
+    
+    client = bot_runner.exchange.client
+    symbols = bot_runner.symbols
+    
+    results = {}
+    try:
+        import asyncio
+        open_time = client.get_all_open_time() if hasattr(client, "get_all_open_time") else {}
+        profits = client.get_all_profit() if hasattr(client, "get_all_profit") else {}
+        
+        for sym in symbols:
+            clean = sym.replace("/", "").upper()
+            sym_res = {
+                "turbo_open": open_time.get("turbo", {}).get(clean, {}).get("open", False) if isinstance(open_time, dict) else False,
+                "binary_open": open_time.get("binary", {}).get(clean, {}).get("open", False) if isinstance(open_time, dict) else False,
+                "digital_open": open_time.get("digital", {}).get(clean, {}).get("open", False) if isinstance(open_time, dict) else False,
+                "profit": profits.get(clean, {}) if isinstance(profits, dict) else {},
+            }
+            results[sym] = sym_res
+            
+        return {
+            "active_symbols": symbols,
+            "broker_schedule": results,
+        }
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "traceback": traceback.format_exc()}
+
