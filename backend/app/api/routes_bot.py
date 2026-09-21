@@ -272,38 +272,3 @@ async def run_backtest(req: BacktestRequest):
         "overfitting_diagnosis": wf_result.overfitting_warning
     }
 
-
-@router.get("/market-schedule")
-async def get_market_schedule():
-    """Diagnostic endpoint to inspect open binary/turbo/digital pairs and payouts on IQ Option."""
-    if not bot_runner.exchange.is_initialized or not hasattr(bot_runner.exchange, "client"):
-        return {"status": "uninitialized"}
-    
-    client = bot_runner.exchange.client
-    symbols = getattr(bot_runner.strategy, "symbols", None) or settings.TRADING_SYMBOLS
-
-    
-    results = {}
-    try:
-        import asyncio
-        open_time = client.get_all_open_time() if hasattr(client, "get_all_open_time") else {}
-        profits = client.get_all_profit() if hasattr(client, "get_all_profit") else {}
-        
-        for sym in symbols:
-            clean = sym.replace("/", "").upper()
-            sym_res = {
-                "turbo_open": open_time.get("turbo", {}).get(clean, {}).get("open", False) if isinstance(open_time, dict) else False,
-                "binary_open": open_time.get("binary", {}).get(clean, {}).get("open", False) if isinstance(open_time, dict) else False,
-                "digital_open": open_time.get("digital", {}).get(clean, {}).get("open", False) if isinstance(open_time, dict) else False,
-                "profit": profits.get(clean, {}) if isinstance(profits, dict) else {},
-            }
-            results[sym] = sym_res
-            
-        return {
-            "active_symbols": symbols,
-            "broker_schedule": results,
-        }
-    except Exception as e:
-        import traceback
-        return {"error": str(e), "traceback": traceback.format_exc()}
-
