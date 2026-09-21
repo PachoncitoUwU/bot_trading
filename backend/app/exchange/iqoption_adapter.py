@@ -167,12 +167,42 @@ class IQOptionAdapter:
                 await asyncio.to_thread(self.client.connect)
                 await asyncio.to_thread(self.client.change_balance, self.balance_type)
 
-            logger.info(f"[IQOPTION] Placing {action.upper()} on {active} for ${invest_amount} (Duration: {duration_minutes}m)...")
+            logger.info(f"[IQOPTION] Placing {action.upper()} on {active} for ${invest_amount} (Requested duration: {duration_minutes}m)...")
+            
+            # 1. Try Standard Binary / Turbo Option
             status, order_id = await asyncio.to_thread(
                 self.client.buy, invest_amount, active, action, duration_minutes
             )
-            if not status:
-                raise RuntimeError(f"IQ Option rejected order on {active}")
+            
+            # 2. Fallback: if duration > 1 rejected, try 1-minute turbo binary
+            if not status and duration_minutes != 1:
+                logger.info(f"[IQOPTION] {duration_minutes}m binary rejected on {active}. Retrying with 1m turbo...")
+                status, order_id = await asyncio.to_thread(
+                    self.client.buy, invest_amount, active, action, 1
+                )
+                
+            # 3. Fallback: Try Digital Option (Digital Spot)
+            if not status and hasattr(self.client, "buy_digital_spot"):
+                logger.info(f"[IQOPTION] Binary options unavailable for {active}. Retrying with Digital Option...")
+                try:
+                    dig_status, dig_id = await asyncio.to_thread(
+                        self.client.buy_digital_spot, active, invest_amount, action, duration_minutes
+                    )
+                    if dig_status and dig_id:
+                        status = True
+                        order_id = dig_id
+                        logger.info(f"[IQOPTION] Digital Option placed successfully! ID: {order_id}")
+                except Exception as dig_err:
+                    logger.debug(f"[IQOPTION] Digital option attempt failed: {dig_err}")
+
+            if not status or not order_id:
+                logger.warning(f"[IQOPTION] ⚠️ Broker rejected order on {active} (market closed, instrument paused, or zero payout at this time).")
+                return {
+                    "id": None,
+                    "status": "rejected",
+                    "symbol": symbol,
+                    "reason": "BROKER_REJECTED"
+                }
 
             logger.info(f"[IQOPTION] Order placed successfully! Order ID: {order_id}")
             return {
@@ -185,8 +215,13 @@ class IQOptionAdapter:
                 "price": float(price) if price else 0.0,
             }
         except Exception as e:
-            logger.error(f"[IQOPTION] Order execution failed: {e}")
-            raise
+            logger.error(f"[IQOPTION] Order execution failed for {active}: {e}")
+            return {
+                "id": None,
+                "status": "rejected",
+                "symbol": symbol,
+                "reason": str(e)
+            }
 
     async def fetch_open_orders(self, symbols: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """IQ Option options close automatically on expiry."""
@@ -198,18 +233,27 @@ class IQOptionAdapter:
 
     async def check_order_result(self, order_id: str):
         """
-        Polls IQ Option to see if the binary option has expired and closed.
+        Polls IQ Option to see if the binary/digital option has expired and closed.
         Returns: (is_closed: bool, net_profit: float)
         """
         if not self.client or not str(order_id).isdigit():
             return False, 0.0
         try:
             oid = int(order_id)
+            # 1. Check Binary Option
             async_data = await asyncio.to_thread(self.client.get_async_order, oid)
             if async_data and async_data.get("option-closed") and async_data["option-closed"] != {}:
                 msg = async_data["option-closed"].get("msg", {})
                 profit = float(msg.get("profit_amount", 0.0)) - float(msg.get("amount", 0.0))
                 return True, profit
+
+            # 2. Check Digital Option
+            if hasattr(self.client, "check_win_digital_v2"):
+                dig_res = await asyncio.to_thread(self.client.check_win_digital_v2, oid)
+                if isinstance(dig_res, tuple) and len(dig_res) >= 2:
+                    is_closed, profit = dig_res[0], float(dig_res[1] or 0.0)
+                    if is_closed:
+                        return True, profit
         except Exception as e:
             logger.debug(f"[IQOPTION] Error checking order {order_id} result: {e}")
         return False, 0.0

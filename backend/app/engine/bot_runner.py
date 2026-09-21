@@ -132,9 +132,11 @@ class BotRunner:
         return reconcile_result
 
     def reset_and_resume_trading(self) -> None:
-        """Fully resets all session targets, locks, daily drawdown, and resumes active trading."""
+        """Fully resets all session targets, locks, daily drawdown, circuit breaker, and resumes active trading."""
         import time
         self.is_running = True
+        if hasattr(self, "circuit_breaker"):
+            self.circuit_breaker.reset()
         if hasattr(self, "session_manager"):
             self.session_manager.reset_session(current_equity=self.equity)
             self.session_manager.cycle_state = "ACTIVE"
@@ -146,7 +148,7 @@ class BotRunner:
         if hasattr(self, "admin_handler"):
             self.admin_handler.is_panic_stopped = False
             self.admin_handler.state_reconciler.is_locked_for_review = False
-        logger.info(f"[RUNNER] Trading reanudado y desbloqueado exitosamente. Saldo base: ${self.equity:,.2f} USD")
+        logger.info(f"[RUNNER] Trading reanudado y desbloqueado exitosamente (Circuit Breaker NORMAL). Saldo base: ${self.equity:,.2f} USD")
 
     # ──────────────────────────────────────────────────────────────────────────
     # Main tick
@@ -416,6 +418,17 @@ class BotRunner:
                         client_order_id=client_order_id,
                         duration_minutes=trade_duration,
                     )
+                    
+                    if not order_resp or order_resp.get("status") == "rejected" or not order_resp.get("id"):
+                        logger.warning(
+                            f"[RUNNER] ⚠️ Orden en {symbol} rechazada por broker "
+                            f"(razón: {order_resp.get('reason', 'Activo cerrado o sin payout')}). "
+                            f"Aplicando enfriamiento de 2m a {symbol} para no interrumpir los otros 7 pares."
+                        )
+                        import time
+                        self._pair_cooldowns[symbol] = time.time() + 120
+                        return
+
                     exchange_order_id = str(order_resp.get("id", ""))
                     filled_amount = to_decimal(order_resp.get("filled") or size)
                     fill_price = to_decimal(order_resp.get("average") or order_resp.get("price") or sig.price)
@@ -424,11 +437,12 @@ class BotRunner:
                         f"client_id={client_order_id} | exchange_id={exchange_order_id} | reason={reason}"
                     )
                 except Exception as e:
-                    logger.error(
-                        f"[RUNNER] Exchange order submission failed for {client_order_id}: {e}",
-                        exc_info=True,
+                    logger.warning(
+                        f"[RUNNER] ⚠️ Error al enviar orden en {symbol}: {e}. "
+                        f"Enfriando par {symbol} 2 min sin congelar el bot."
                     )
-                    self.circuit_breaker.record_error(str(e))
+                    import time
+                    self._pair_cooldowns[symbol] = time.time() + 120
                     return
 
             # Update DB with exchange confirmation
