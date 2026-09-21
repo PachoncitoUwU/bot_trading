@@ -601,7 +601,9 @@ class BotRunner:
                             profit_usd=profit,
                             current_balance=float(self.equity),
                             instrument=instrument,
+                            order_id=exchange_order_id,
                         )
+
                         if is_milestone and milestone_msg:
                             await self.broadcast_service.send_broadcast(milestone_msg)
                             logger.info(f"[FORWARD TEST] 🎯 Hito alcanzado ({forward_test_tracker.data['total_trades']}/300). Reporte enviado a Telegram.")

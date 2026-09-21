@@ -76,6 +76,7 @@ class ForwardTestTracker:
         profit_usd: float,
         current_balance: float,
         instrument: str = "BINARY",
+        order_id: Optional[str] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Records a completed forward-test trade.
@@ -119,6 +120,7 @@ class ForwardTestTracker:
         inst = instrument.upper() if instrument else "BINARY"
         self.data["trades"].append({
             "num": trade_num,
+            "order_id": str(order_id or ""),
             "time": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
             "symbol": symbol,
             "regime": regime,
@@ -140,6 +142,41 @@ class ForwardTestTracker:
             milestone_msg = self.format_milestone_report(trade_num)
 
         return is_milestone, milestone_msg
+
+    def reconcile_with_broker_orders(self, broker_closed_orders: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Audits and reconciles broker orders against recorded forward-test trades.
+        Detects any orphan broker trades (executed on broker but missing from tracker)
+        and automatically inserts them to eliminate any phantom trade sampling bias.
+        """
+        recorded_order_ids = {str(t.get("order_id")) for t in self.data.get("trades", []) if t.get("order_id")}
+        orphans = []
+        for b_order in broker_closed_orders:
+            b_id = str(b_order.get("order_id") or b_order.get("id") or "")
+            if b_id and b_id not in recorded_order_ids:
+                orphans.append(b_order)
+                # Auto-heal by recording the missing trade
+                self.record_trade(
+                    symbol=b_order.get("symbol", "UNKNOWN"),
+                    pattern=b_order.get("pattern", "Broker Discrepancy Reconciliation"),
+                    side=b_order.get("side", "CALL"),
+                    stake=float(b_order.get("stake", 25.0)),
+                    is_win=bool(b_order.get("is_win", False)),
+                    profit_usd=float(b_order.get("profit", 0.0)),
+                    current_balance=float(b_order.get("balance", self.data.get("current_balance", 9230.31))),
+                    instrument=b_order.get("instrument", "BINARY"),
+                    order_id=b_id,
+                )
+                logger.warning(f"[RECONCILER] ⚠️ Operación fantasma recuperada y reconciliada: Orden #{b_id} ({b_order.get('symbol')})")
+
+        return {
+            "reconciled": True,
+            "recorded_count": len(self.data.get("trades", [])),
+            "broker_count": len(broker_closed_orders),
+            "orphan_count": len(orphans),
+            "orphans_recovered": [str(o.get("order_id") or o.get("id")) for o in orphans]
+        }
+
 
     def calculate_cadence(self) -> Dict[str, Any]:
         """Calculates trade cadence (trades/day) and projected days to reach checkpoints."""
