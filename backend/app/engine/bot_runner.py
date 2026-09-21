@@ -384,88 +384,95 @@ class BotRunner:
 
         client_order_id = generate_client_order_id("BOT")
 
-        async with get_db_session() as session:
-            # Persist intent before sending to exchange
-            await create_order_record(
-                session,
-                client_order_id=client_order_id,
-                symbol=symbol,
-                exchange_id=settings.EXCHANGE_ID,
-                mode=self.mode,
-                side=side,
-                order_type=OrderType.MARKET,
-                amount=size,
-                strategy_name=self.strategy.name,
-            )
-
-            if self.mode == BotMode.PAPER:
-                # Paper mode: simulate immediate fill
-                exchange_order_id = f"PAPER_{client_order_id}"
-                filled_amount = size
-                fill_price = sig.price
-                logger.info(
-                    f"[PAPER] Simulated {side.value} {symbol}: {size} ({trade_duration}m) @ ${fill_price} | "
-                    f"client_id={client_order_id}"
+        # 1. Non-blocking attempt to record order intent in DB
+        try:
+            async with get_db_session() as session:
+                await create_order_record(
+                    session,
+                    client_order_id=client_order_id,
+                    symbol=symbol,
+                    exchange_id=settings.EXCHANGE_ID,
+                    mode=self.mode,
+                    side=side,
+                    order_type=OrderType.MARKET,
+                    amount=size,
+                    strategy_name=self.strategy.name,
                 )
-            else:
-                # TESTNET / LIVE: send real order to exchange
-                try:
-                    order_resp = await self.exchange.create_order(
-                        symbol=symbol,
-                        order_type=OrderType.MARKET,
-                        side=side,
-                        amount=size,
-                        client_order_id=client_order_id,
-                        duration_minutes=trade_duration,
-                    )
-                    
-                    if not order_resp or order_resp.get("status") == "rejected" or not order_resp.get("id"):
-                        logger.warning(
-                            f"[RUNNER] ⚠️ Orden en {symbol} rechazada por broker "
-                            f"(razón: {order_resp.get('reason', 'Activo cerrado o sin payout')}). "
-                            f"Aplicando enfriamiento de 2m a {symbol} para no interrumpir los otros 7 pares."
-                        )
-                        import time
-                        self._pair_cooldowns[symbol] = time.time() + 120
-                        return
+        except Exception as db_err:
+            logger.warning(f"[DB] Could not record initial order intent (non-fatal): {db_err}")
 
-                    exchange_order_id = str(order_resp.get("id", ""))
-                    filled_amount = to_decimal(order_resp.get("filled") or size)
-                    fill_price = to_decimal(order_resp.get("average") or order_resp.get("price") or sig.price)
-                    logger.info(
-                        f"[ORDER DISPATCHED] {symbol} {side.value} ${size} ({trade_duration}m) | "
-                        f"client_id={client_order_id} | exchange_id={exchange_order_id} | reason={reason}"
-                    )
-                except Exception as e:
+        # 2. DISPATCH ORDER TO BROKER (Completely outside DB session to avoid SQLite locks)
+        if self.mode == BotMode.PAPER:
+            # Paper mode: simulate immediate fill
+            exchange_order_id = f"PAPER_{client_order_id}"
+            filled_amount = size
+            fill_price = sig.price
+            logger.info(
+                f"[PAPER] Simulated {side.value} {symbol}: {size} ({trade_duration}m) @ ${fill_price} | "
+                f"client_id={client_order_id}"
+            )
+        else:
+            # TESTNET / LIVE: send real order to exchange
+            try:
+                order_resp = await self.exchange.create_order(
+                    symbol=symbol,
+                    order_type=OrderType.MARKET,
+                    side=side,
+                    amount=size,
+                    client_order_id=client_order_id,
+                    duration_minutes=trade_duration,
+                )
+                
+                if not order_resp or order_resp.get("status") == "rejected" or not order_resp.get("id"):
                     logger.warning(
-                        f"[RUNNER] ⚠️ Error al enviar orden en {symbol}: {e}. "
-                        f"Enfriando par {symbol} 2 min sin congelar el bot."
+                        f"[RUNNER] ⚠️ Orden en {symbol} rechazada por broker "
+                        f"(razón: {order_resp.get('reason', 'Activo cerrado o sin payout')}). "
+                        f"Aplicando enfriamiento de 2m a {symbol} para no interrumpir los otros 7 pares."
                     )
                     import time
                     self._pair_cooldowns[symbol] = time.time() + 120
                     return
 
-            # Update DB with exchange confirmation
-            await update_order_from_exchange(
-                session,
-                client_order_id=client_order_id,
-                exchange_order_id=exchange_order_id,
-                status=OrderStatus.FILLED,
-                filled_amount=filled_amount,
-                avg_fill_price=fill_price,
-            )
+                exchange_order_id = str(order_resp.get("id", ""))
+                filled_amount = to_decimal(order_resp.get("filled") or size)
+                fill_price = to_decimal(order_resp.get("average") or order_resp.get("price") or sig.price)
+                logger.info(
+                    f"[ORDER DISPATCHED] {symbol} {side.value} ${size} ({trade_duration}m) | "
+                    f"client_id={client_order_id} | exchange_id={exchange_order_id} | reason={reason}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[RUNNER] ⚠️ Error al enviar orden en {symbol}: {e}. "
+                    f"Enfriando par {symbol} 2 min sin congelar el bot."
+                )
+                import time
+                self._pair_cooldowns[symbol] = time.time() + 120
+                return
 
-            # Persist position to DB
-            await upsert_position(
-                session,
-                symbol=symbol,
-                exchange_id=settings.EXCHANGE_ID,
-                mode=self.mode,
-                amount=filled_amount,
-                entry_price=fill_price,
-                stop_loss=sig.stop_loss,
-                take_profit=sig.take_profit,
-            )
+        # 3. Non-blocking attempt to persist filled order & position to DB
+        try:
+            async with get_db_session() as session:
+                await update_order_from_exchange(
+                    session,
+                    client_order_id=client_order_id,
+                    exchange_order_id=exchange_order_id,
+                    status=OrderStatus.FILLED,
+                    filled_amount=filled_amount,
+                    avg_fill_price=fill_price,
+                )
+                await upsert_position(
+                    session,
+                    symbol=symbol,
+                    exchange_id=settings.EXCHANGE_ID,
+                    mode=self.mode,
+                    amount=filled_amount,
+                    entry_price=fill_price,
+                    stop_loss=sig.stop_loss,
+                    take_profit=sig.take_profit,
+                )
+        except Exception as db_err:
+            logger.warning(f"[DB] Could not persist filled order status (non-fatal): {db_err}")
+
 
         # Update in-memory risk state
         self.risk_manager.handle_partial_fill(

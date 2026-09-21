@@ -3,10 +3,13 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy import text
+from sqlalchemy import text, event
 
 from app.core.config import settings
 from app.core.logger import logger
+
+is_sqlite = "sqlite" in settings.DATABASE_URL.lower()
+connect_args = {"timeout": 30.0} if is_sqlite else {}
 
 # Create the async engine
 engine = create_async_engine(
@@ -14,7 +17,20 @@ engine = create_async_engine(
     echo=False,          # Set True to debug SQL queries
     future=True,
     pool_pre_ping=True,  # Verify connections before use
+    connect_args=connect_args,
 )
+
+if is_sqlite:
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        try:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA busy_timeout=30000;")
+            cursor.execute("PRAGMA synchronous=NORMAL;")
+            cursor.close()
+        except Exception:
+            pass
 
 # Session factory
 AsyncSessionLocal = async_sessionmaker(
@@ -34,9 +50,16 @@ async def init_db() -> None:
     from app.database.models import Base  # local import to avoid circular deps
 
     async with engine.begin() as conn:
+        if is_sqlite:
+            try:
+                await conn.execute(text("PRAGMA journal_mode=WAL;"))
+                await conn.execute(text("PRAGMA busy_timeout=30000;"))
+            except Exception:
+                pass
         await conn.run_sync(Base.metadata.create_all)
 
     logger.info("[DB] Database initialized. All tables verified/created.")
+
 
 
 @asynccontextmanager

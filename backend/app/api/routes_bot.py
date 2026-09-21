@@ -280,7 +280,8 @@ async def get_market_schedule():
         return {"status": "uninitialized"}
     
     client = bot_runner.exchange.client
-    symbols = bot_runner.symbols
+    symbols = getattr(bot_runner.strategy, "symbols", None) or settings.TRADING_SYMBOLS
+
     
     results = {}
     try:
