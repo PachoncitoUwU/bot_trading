@@ -25,13 +25,16 @@ class SessionManager:
         self.active_minutes: int = active_minutes
         self.rest_minutes: int = rest_minutes
 
-        # Session Financials
+        # Session Financials & 7-Trade Limit
         self.session_starting_equity: Decimal = Decimal("10000.00")
         self.current_equity: Decimal = Decimal("10000.00")
         self.session_net_profit: Decimal = Decimal("0.00")
         self.session_closed_trades: int = 0
+        self.session_max_trades: int = 7
         self.session_wins: int = 0
         self.session_losses: int = 0
+        self.daily_sl_locked_date: Optional[str] = None
+        self.last_daily_schedule_day: Optional[str] = None
 
         # Target State
         self.is_target_reached: bool = False
@@ -43,7 +46,7 @@ class SessionManager:
         self.session_start_time: datetime = datetime.now()
 
     def reset_session(self, current_equity: Optional[Decimal] = None) -> None:
-        """Resets session stats, net profit, and clears target reached state."""
+        """Resets session stats, net profit, and clears target reached state for a new 7-trade session."""
         if current_equity and current_equity > Decimal("0"):
             self.session_starting_equity = current_equity
             self.current_equity = current_equity
@@ -58,7 +61,7 @@ class SessionManager:
         self.cycle_state = "ACTIVE"
         self.cycle_start_time = time.time()
         self.session_start_time = datetime.now()
-        logger.info(f"[SESSION MANAGER] Session reset. Starting equity: ${self.session_starting_equity:,.2f} USD")
+        logger.info(f"[SESSION MANAGER] Session reset. Starting equity: ${self.session_starting_equity:,.2f} USD (Max trades: {self.session_max_trades})")
 
     def sync_starting_equity(self, equity: Decimal) -> None:
         """Sets or updates initial session equity on startup or reset."""
@@ -160,8 +163,21 @@ class SessionManager:
         just_reached = False
         target_reason = ""
 
-        # MODO MARATÓN DE APRENDIZAJE: Operar continuamente hasta superar $10,000 USD o caer a $0
-        if self.target_mode in ("MARATON_10K", "MARATON", "10K", "APRENDIZAJE"):
+        # 1. Verificación universal de Stop Loss de Sesión / Día (-3.0%)
+        max_session_loss_pct = Decimal("3.0")
+        if profit_pct <= -max_session_loss_pct and not self.is_target_reached:
+            self.is_target_reached = True
+            self.target_reached_at = datetime.now()
+            self.daily_sl_locked_date = datetime.now().strftime("%Y-%m-%d")
+            just_reached = True
+            target_reason = "STOP_LOSS_SESION"
+            logger.warning(
+                f"[SESSION MANAGER] 🛡️ STOP LOSS DE SESIÓN ACTIVADO! Pérdida acumulada: ${self.session_net_profit:,.2f} "
+                f"({profit_pct:.2f}%). Candado diario activado para {self.daily_sl_locked_date}. Deteniendo bot para proteger capital."
+            )
+
+        # 2. Verificación de Meta de Ganancia según el modo
+        elif self.target_mode in ("MARATON_10K", "MARATON", "10K", "APRENDIZAJE"):
             target_pct = Decimal("100.0")
             target_amount = Decimal("10000.00")
             if current_equity >= Decimal("10000.00") and not self.is_target_reached:
@@ -179,7 +195,6 @@ class SessionManager:
         else:
             target_pct = self.get_target_pct()
             target_amount = (self.session_starting_equity * target_pct) / Decimal("100")
-            max_session_loss_pct = Decimal("3.0")
             if profit_pct >= target_pct and not self.is_target_reached:
                 self.is_target_reached = True
                 self.target_reached_at = datetime.now()
@@ -189,15 +204,17 @@ class SessionManager:
                     f"[SESSION MANAGER] 🎯 PROFIT TARGET REACHED! Profit: +${self.session_net_profit:,.2f} "
                     f"(+{profit_pct:.2f}%), Target was: {target_pct}%. Stopping bot to lock profits."
                 )
-            elif profit_pct <= -max_session_loss_pct and not self.is_target_reached:
-                self.is_target_reached = True
-                self.target_reached_at = datetime.now()
-                just_reached = True
-                target_reason = "STOP_LOSS_SESION"
-                logger.warning(
-                    f"[SESSION MANAGER] 🛡️ STOP LOSS DE SESIÓN ACTIVADO! Pérdida acumulada: ${self.session_net_profit:,.2f} "
-                    f"({profit_pct:.2f}%). Deteniendo bot para proteger capital."
-                )
+
+        # 3. Límite Operativo de Sesión (Máximo 7 operaciones por tanda)
+        if not self.is_target_reached and self.session_closed_trades >= self.session_max_trades:
+            self.is_target_reached = True
+            self.target_reached_at = datetime.now()
+            just_reached = True
+            target_reason = "SESSION_LIMIT_7_REACHED"
+            logger.info(
+                f"[SESSION MANAGER] 🏁 Límite de sesión alcanzado ({self.session_closed_trades}/{self.session_max_trades} operaciones). "
+                f"Resultado: {self.session_wins}W - {self.session_losses}L | PnL: ${self.session_net_profit:,.2f} ({profit_pct:.2f}%). Deteniendo bot."
+            )
 
         return {
             "session_profit": self.session_net_profit,
@@ -300,9 +317,45 @@ class SessionManager:
             "hourly_cycle_enabled": self.hourly_cycle_enabled,
             "market_regime": regime,
             "closed_trades": self.session_closed_trades,
+            "max_session_trades": self.session_max_trades,
             "wins": self.session_wins,
             "losses": self.session_losses,
             "win_rate": round((self.session_wins / self.session_closed_trades * 100), 1) if self.session_closed_trades > 0 else 0.0,
+            "daily_sl_locked": self.daily_sl_locked_date == datetime.now().strftime("%Y-%m-%d"),
         }
+
+    def can_start_manual_session(self) -> Tuple[bool, str]:
+        """
+        Validates if a manual 'Iniciar Trading' can be executed.
+        PREVENTS BYPASSING STOP LOSS: If today hit the Stop Loss, returns False.
+        """
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        if self.daily_sl_locked_date == today_str:
+            return False, "DAILY_SL_LOCKED"
+        return True, "OK"
+
+    def check_daily_market_schedule(self) -> Tuple[bool, bool, str]:
+        """
+        Monitors daily market schedule (Mon-Fri 07:00 to 17:00).
+        At 07:00 AM of a new trading day, triggers automatic reset and wakeup.
+        Returns: (should_wake_up: bool, is_real_market_open: bool, reason: str)
+        """
+        now = datetime.now()
+        weekday = now.weekday()  # 0=Monday, 4=Friday, 5=Saturday, 6=Sunday
+        hour = now.hour
+        today_str = now.strftime("%Y-%m-%d")
+
+        is_weekday = weekday in (0, 1, 2, 3, 4)
+        is_real_market_hours = is_weekday and (7 <= hour < 17)
+
+        # 07:00 AM Auto-Wakeup check
+        if is_weekday and hour >= 7:
+            if self.last_daily_schedule_day != today_str:
+                self.last_daily_schedule_day = today_str
+                # Unlock previous day Stop Loss lock
+                self.daily_sl_locked_date = None
+                return True, is_real_market_hours, f"NEW_DAY_WAKEUP_{today_str}"
+
+        return False, is_real_market_hours, "NORMAL_SCHEDULE"
 
 

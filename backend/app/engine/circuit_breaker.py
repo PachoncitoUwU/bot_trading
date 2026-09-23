@@ -58,3 +58,5 @@ class CircuitBreaker:
         self.trip_reason = ""
         self.last_error = ""
         logger.info("[CIRCUIT BREAKER] Breaker manually reset to NORMAL.")
+
+    reset = manual_reset

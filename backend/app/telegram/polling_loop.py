@@ -102,9 +102,12 @@ class TelegramPollingLoop:
             or clean in ("iniciar", "start", "arrancar", "activar", "comenzar", "run")
         ):
             await bot_runner._refresh_balance()
-            bot_runner.reset_and_resume_trading()
-            t_pct = bot_runner.session_manager.target_mode if hasattr(bot_runner, "session_manager") else "3.5%"
-            response = bot_runner.admin_handler.handle_start_bot(username, target_pct=t_pct)
+            can_start, reason = bot_runner.reset_and_resume_trading(is_manual_start=True)
+            if not can_start:
+                response = bot_runner.admin_handler.handle_daily_sl_lockout_message(username)
+            else:
+                t_pct = bot_runner.session_manager.target_mode if hasattr(bot_runner, "session_manager") else "3.5%"
+                response = bot_runner.admin_handler.handle_start_bot(username, target_pct=t_pct, max_trades=7)
             await self._client.send_message(chat_id, response, reply_markup=keyboard)
 
         # Pausar / Detener Trading

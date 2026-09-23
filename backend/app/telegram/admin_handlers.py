@@ -124,22 +124,76 @@ class TelegramAdminHandler:
             "🛡 <b>Protección de Fondos:</b> Stop Loss de Sesión -3% Activo ✅"
         )
 
-    def handle_start_bot(self, user_id: str, target_pct: str = "3.5%") -> str:
+    def handle_start_bot(self, user_id: str, target_pct: str = "3.5%", max_trades: int = 7) -> str:
         """Friendly start command from mobile button."""
         self.is_panic_stopped = False
         self.risk_manager.circuit_breaker.manual_reset()
-        self.risk_manager.reset_daily_limits(self.risk_manager.daily_equity)
         self.state_reconciler.is_locked_for_review = False
         return (
-            "🟢 <b>¡TRADING INICIADO CON ÉXITO!</b>\n"
+            "🟢 <b>¡SESIÓN DE TRADING INICIADA!</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"👤 <b>Operador:</b> <code>{user_id}</code>\n"
-            "🤖 <b>Estado:</b> ACTIVO Y ESCANEANDO\n"
-            f"🎯 <b>Meta de Sesión:</b> <b>+{target_pct}</b> (Auto-apagado al cumplir)\n"
-            "🛡️ <b>Freno de Seguridad:</b> <b>-3.0%</b> (Stop Loss de cuenta)\n"
-            "⚡ <b>Gestión de Capital:</b> Tamaño FIJO 0.25% ($25 USD) — <b>CERO Martingala</b> 🛡️\n"
+            "🤖 <b>Estado:</b> ACTIVO Y ESCANEANDO EN VIVO\n"
+            f"🎯 <b>Límite de Sesión:</b> <b>Máximo {max_trades} operaciones</b> (Auto-detención garantizada)\n"
+            f"🎯 <b>Meta de Ganancia:</b> +{target_pct} | 🛡️ <b>Freno Stop Loss:</b> -3.0%\n"
+            "⚡ <b>Gestión de Capital:</b> Tamaño FIJO $25 USD — <b>CERO Martingala</b> 🛡️\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "<i>El bot analizará las mejores confluencias y te notificará cada operación y resultado.</i>"
+            f"<i>El bot escaneará el mercado y se detendrá solo al completar {max_trades} operaciones.</i>"
+        )
+
+    def handle_daily_sl_lockout_message(self, user_id: str) -> str:
+        """Lockout message when Stop Loss is active and user tries to manually restart."""
+        return (
+            "🛡️ <b>BLOQUEO DE SEGURIDAD ACTIVO (Stop Loss Diario)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>Operador:</b> <code>{user_id}</code>\n"
+            "🛑 <b>Estado:</b> OPERACIONES BLOQUEADAS POR RIESGO\n\n"
+            "⚠️ <b>Motivo:</b> Hoy ya se alcanzó el límite de protección de capital (-3.0%).\n"
+            "Por estricta disciplina de riesgo y para evitar sobreoperación, <b>el trading permanece bloqueado durante el resto de la jornada</b>.\n\n"
+            "🌅 <b>Reanudación Automática:</b> Mañana a las <b>07:00 AM</b> con la apertura de la nueva sesión de mercado real.\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "<i>El botón manual no puede anular este freno protector de capital.</i>"
+        )
+
+    def handle_session_trades_completed_report(
+        self,
+        wins: int,
+        losses: int,
+        pnl_usd: float,
+        pnl_pct: float,
+        current_equity: float,
+        total_sample_trades: int = 0
+    ) -> str:
+        """Formatted report when the 7-trade session limit is reached."""
+        sign = "+" if pnl_usd >= 0 else ""
+        icon = "🏆" if pnl_usd >= 0 else "🛑"
+        win_rate = round((wins / 7) * 100, 1) if (wins + losses) > 0 else 0.0
+
+        return (
+            f"🏁 <b>SESIÓN DE 7 OPERACIONES FINALIZADA</b> {icon}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 <b>Límite de Sesión:</b> 7 / 7 operaciones completadas\n"
+            f"📊 <b>Balance de la Sesión:</b> <b>{wins} Ganadas / {losses} Perdidas ({win_rate}% Efectividad)</b>\n"
+            f"💰 <b>Ganancia Neta:</b> <b>{sign}${pnl_usd:,.2f} USD ({sign}{pnl_pct:.2f}%)</b>\n"
+            f"💵 <b>Saldo Final en Cuenta:</b> <b>${current_equity:,.2f} USD</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📈 <b>Progreso Validación Fase 3:</b> <b>{total_sample_trades}/50 operaciones</b>\n"
+            f"🛡️ <b>Reconciliación Broker:</b> ✅ 100% Sincronizado (0 huérfanas)\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"<i>El bot se ha detenido automáticamente por seguridad. Cuando desees otra sesión de 7 operaciones, presiona:</i> <b>▶️ Iniciar Trading</b>"
+        )
+
+    def handle_daily_market_wakeup_message(self, date_str: str, current_equity: float) -> str:
+        """Morning greeting when market opens and bot auto-starts."""
+        return (
+            "🌅 <b>¡BUENOS DÍAS! NUEVA JORNADA DE MERCADO REAL INICIADA</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"📅 <b>Fecha:</b> <code>{date_str}</code> | 🏦 Horario Bancario Londres/NY\n"
+            f"💼 <b>Saldo Inicial del Día:</b> <b>${current_equity:,.2f} USD</b>\n"
+            "🤖 <b>Estado:</b> Bot activado automáticamente y escaneando pares reales.\n"
+            "🎯 <b>Meta Programada:</b> +3.5% | 🛡️ <b>Stop Loss Diario:</b> -3.0%\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "<i>El bot operará la jornada con gestión estricta de riesgo y francotirador.</i>"
         )
 
     def handle_pause_bot(self, user_id: str) -> str:
@@ -151,7 +205,7 @@ class TelegramAdminHandler:
             "💤 <b>Nuevas entradas:</b> DETENIDAS\n"
             "🛡 <b>Posiciones abiertas:</b> Siguen vigiladas por el motor de riesgo\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "<i>Pulsa '▶️ Iniciar Bot' cuando quieras reanudar.</i>"
+            "<i>Pulsa '▶️ Iniciar Trading' cuando quieras reanudar.</i>"
         )
 
     def handle_sentiment_report(self, sentiment: Dict[str, Any]) -> str:

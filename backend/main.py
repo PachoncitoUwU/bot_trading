@@ -33,10 +33,12 @@ _polling_task: asyncio.Task = None
 # ──────────────────────────────────────────────────────────────────────────────
 
 async def trading_background_loop():
-    """Continuous 5-second trading tick loop."""
+    """Continuous 5-second trading tick loop with automated daily market schedule."""
     logger.info("[SERVER] Background trading loop started.")
     while True:
         try:
+            if hasattr(bot_runner, "check_daily_market_schedule"):
+                await bot_runner.check_daily_market_schedule()
             if bot_runner.is_running:
                 await bot_runner.tick()
         except Exception as e:

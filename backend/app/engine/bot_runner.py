@@ -2,7 +2,7 @@
 import asyncio
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.config import settings
 from app.core.constants import BotMode, CircuitBreakerStatus, OrderSide, OrderStatus, OrderType, SignalType
@@ -50,7 +50,7 @@ class BotRunner:
         self.circuit_breaker = CircuitBreaker(max_consecutive_errors=settings.CIRCUIT_BREAKER_MAX_ERRORS)
         self.risk_manager = RiskManager(circuit_breaker=self.circuit_breaker)
         self.staking_manager = StakingManager()
-        self.session_manager = SessionManager(target_mode="MARATON", hourly_cycle_enabled=False)
+        self.session_manager = SessionManager(target_mode="3.5%", hourly_cycle_enabled=False)
         self.reconciler = StateReconciler(self.exchange)
         self.signal_manager = InteractiveSignalManager(default_ttl_seconds=settings.TELEGRAM_SIGNAL_TTL_SECONDS)
         self.admin_handler = TelegramAdminHandler(self.risk_manager, self.reconciler, self.signal_manager)
@@ -112,6 +112,18 @@ class BotRunner:
         # 2. Sync equity from exchange (GAP #6 fix)
         await self._refresh_balance()
 
+        # For binary options (IQ Option), clear any stale in-memory positions and close zombie DB rows BEFORE reconciliation
+        if settings.EXCHANGE_ID.lower() == "iqoption":
+            self.risk_manager.active_positions.clear()
+            try:
+                from app.database.order_repository import close_position_record
+                async with get_db_session() as session:
+                    stale_positions = await get_open_positions(session)
+                    for sp in stale_positions:
+                        await close_position_record(session, sp["symbol"], realized_pnl=Decimal("0"))
+            except Exception as clean_err:
+                logger.debug(f"[RUNNER] Non-fatal cleanup of stale positions: {clean_err}")
+
         # 3. Reconcile state against DB (GAP #4 fix — uses real DB, not empty lists)
         async with get_db_session() as session:
             reconcile_result = await self.reconciler.reconcile(db_session=session)
@@ -131,24 +143,64 @@ class BotRunner:
             logger.info("[RUNNER] Bot inicializado con éxito en modo STANDBY (Esperando comando de inicio desde Telegram).")
         return reconcile_result
 
-    def reset_and_resume_trading(self) -> None:
-        """Fully resets all session targets, locks, daily drawdown, circuit breaker, and resumes active trading."""
+    def reset_and_resume_trading(self, is_manual_start: bool = False) -> Tuple[bool, str]:
+        """Resets session targets and starts/resumes trading, strictly respecting daily Stop Loss."""
         import time
+        from datetime import datetime
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        # CANDADO DE STOP LOSS: Si el inicio es manual y hoy ya se activó el Stop Loss, BLOQUEAR
+        if is_manual_start:
+            is_sl_locked = (
+                self.risk_manager.is_daily_drawdown_locked
+                or (hasattr(self, "session_manager") and getattr(self.session_manager, "daily_sl_locked_date", None) == today_str)
+            )
+            if is_sl_locked:
+                logger.warning(f"[RUNNER] Inicio manual bloqueado: Stop Loss diario activo ({today_str}). No se anula el límite.")
+                return False, "DAILY_SL_LOCKED"
+
         self.is_running = True
         if hasattr(self, "circuit_breaker"):
-            self.circuit_breaker.reset()
+            self.circuit_breaker.manual_reset()
         if hasattr(self, "session_manager"):
             self.session_manager.reset_session(current_equity=self.equity)
             self.session_manager.cycle_state = "ACTIVE"
             self.session_manager.cycle_start_time = time.time()
-        if hasattr(self, "risk_manager"):
+        if hasattr(self, "risk_manager") and not self.risk_manager.is_daily_drawdown_locked:
             self.risk_manager.reset_daily_limits(self.equity)
         if hasattr(self, "reconciler"):
             self.reconciler.is_locked_for_review = False
         if hasattr(self, "admin_handler"):
             self.admin_handler.is_panic_stopped = False
             self.admin_handler.state_reconciler.is_locked_for_review = False
-        logger.info(f"[RUNNER] Trading reanudado y desbloqueado exitosamente (Circuit Breaker NORMAL). Saldo base: ${self.equity:,.2f} USD")
+        logger.info(f"[RUNNER] Sesión de trading iniciada exitosamente (Límite 7 ops | Circuit Breaker NORMAL). Saldo base: ${self.equity:,.2f} USD")
+        return True, "STARTED"
+
+    async def check_daily_market_schedule(self) -> None:
+        """Checks daily market opening (07:00 AM Mon-Fri) for automatic session reset and wakeup."""
+        if not hasattr(self, "session_manager"):
+            return
+
+        should_wake, is_open, reason = self.session_manager.check_daily_market_schedule()
+        if should_wake:
+            logger.info(f"[RUNNER] 🌅 Apertura de Mercado Real detectada ({reason}). Despertando bot y reseteando jornada...")
+            await self._refresh_balance()
+            self.risk_manager.reset_daily_limits(self.equity)
+            self.session_manager.reset_session(current_equity=self.equity)
+            self.session_manager.daily_sl_locked_date = None
+            self.is_running = True
+
+            from app.telegram.telegram_client import get_telegram_client
+            client = get_telegram_client()
+            target_chat = settings.TELEGRAM_ADMIN_CHAT_ID or settings.TELEGRAM_CHANNEL_ID
+            if client and target_chat:
+                today_date = datetime.now().strftime("%Y-%m-%d")
+                wakeup_msg = self.admin_handler.handle_daily_market_wakeup_message(today_date, float(self.equity))
+                keyboard = self.admin_handler.get_main_menu_keyboard()
+                try:
+                    await client.send_message(target_chat, wakeup_msg, reply_markup=keyboard)
+                except Exception as tg_err:
+                    logger.debug(f"[RUNNER] Error enviando mensaje matutino: {tg_err}")
 
     # ──────────────────────────────────────────────────────────────────────────
     # Main tick
@@ -558,6 +610,12 @@ class BotRunner:
                     # Quitar de active_positions si existía y activar enfriamiento de 120s
                     if symbol in self.risk_manager.active_positions:
                         del self.risk_manager.active_positions[symbol]
+                    try:
+                        from app.database.order_repository import close_position_record
+                        async with get_db_session() as session:
+                            await close_position_record(session, symbol, realized_pnl=Decimal(str(profit)))
+                    except Exception:
+                        pass
                     import time
                     self._pair_cooldowns[symbol] = time.time() + 45.0  # 45 segundos de enfriamiento ágil
 
@@ -633,34 +691,56 @@ class BotRunner:
                             pass
                     exit_p = Decimal(str(recent_candles[-1][4])) if recent_candles else (entry_price or Decimal("1.0800"))
 
-                    # Notificar a Telegram
+                    # Formato renovado y claro para Telegram (Requerimiento C)
                     clean_symbol = symbol.replace("-OTC", "")
-                    next_stake_label = (
-                        f"${staking_res['next_stake']:,.0f} USD (Paso 1 Base)"
-                        if staking_res.get("event") == "WIN_RESET" or staking_res.get("step_after", 1) == 1
-                        else f"${staking_res['next_stake']:,.0f} USD (Recuperación Inteligente)"
-                    )
+                    mkt_type = "OTC" if "-OTC" in symbol.upper() else "Mercado Real"
+                    side_icon = "🟢" if side == OrderSide.BUY else "🔴"
+
+                    # 1. Progreso de Sesión (ej: 3/7)
+                    curr_sess_trades = min(7, self.session_manager.session_closed_trades + 1)
+                    sess_max = self.session_manager.session_max_trades
+                    bar_sess = "🟩" * curr_sess_trades + "⬜" * (sess_max - curr_sess_trades)
+
+                    # 2. Progreso hacia n=50 (Fase 3 acumulativa)
+                    from app.engine.forward_test_tracker import forward_test_tracker
+                    total_ft = forward_test_tracker.data.get("total_trades", 0)
+                    wins_ft = forward_test_tracker.data.get("wins", 0)
+                    losses_ft = forward_test_tracker.data.get("losses", 0)
+                    wr_ft = round((wins_ft / total_ft) * 100, 1) if total_ft > 0 else 0.0
+                    filled_50 = min(10, max(0, (total_ft * 10) // 50))
+                    bar_50 = "🟩" * filled_50 + "⬜" * (10 - filled_50)
+                    pct_50 = round((total_ft / 50) * 100, 1)
+
+                    # 3. Estado de Reconciliación con Broker
+                    reconcile_status = "✅ 100% Sincronizado (0 huérfanas)" if not self.reconciler.is_locked_for_review else "⚠️ Requiere Revisión"
+
                     if is_win:
                         tg_msg = (
                             f"🏆 <b>¡OPERACIÓN GANADA! (+87%)</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━\n"
-                            f"🪙 <b>Activo:</b> <code>{clean_symbol} (OTC)</code>\n"
-                            f"🧭 <b>Dirección:</b> <b>{side_label}</b>\n"
-                            f"⏱️ <b>Tiempo:</b> <code>{dur_str}</code>\n"
+                            f"🪙 <b>Activo:</b> <code>{clean_symbol} ({mkt_type})</code>\n"
+                            f"🧭 <b>Dirección:</b> <b>{side_label} {side_icon}</b> | ⏱️ <b>Tiempo:</b> <code>{dur_str}</code>\n"
                             f"💰 <b>Ganancia Neta:</b> <b>+${profit:,.2f} USD</b>\n"
-                            f"📈 <b>Saldo en Cuenta:</b> <b>${self.equity:,.2f} USD</b>\n"
-                            f"🔄 <b>Siguiente postura:</b> <code>{next_stake_label}</code>"
+                            f"💵 <b>Saldo en Cuenta:</b> <b>${self.equity:,.2f} USD</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"📊 <b>Sesión Actual:</b> <code>[{bar_sess}] {curr_sess_trades}/{sess_max} ops</code>\n"
+                            f"🎯 <b>Validación Fase 3:</b> <code>[{bar_50}] {total_ft}/50 ({pct_50}%)</code>\n"
+                            f"   • Muestra acumulada: {wins_ft}W - {losses_ft}L ({wr_ft}% Win Rate)\n"
+                            f"🛡️ <b>Reconciliación:</b> {reconcile_status}"
                         )
                     else:
                         tg_msg = (
-                            f"🛡️ <b>OPERACIÓN CERRADA</b>\n"
+                            f"🛑 <b>OPERACIÓN CERRADA (Protección de Capital)</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━\n"
-                            f"🪙 <b>Activo:</b> <code>{clean_symbol} (OTC)</code>\n"
-                            f"🧭 <b>Dirección:</b> <b>{side_label}</b>\n"
-                            f"⏱️ <b>Tiempo:</b> <code>{dur_str}</code>\n"
+                            f"🪙 <b>Activo:</b> <code>{clean_symbol} ({mkt_type})</code>\n"
+                            f"🧭 <b>Dirección:</b> <b>{side_label} {side_icon}</b> | ⏱️ <b>Tiempo:</b> <code>{dur_str}</code>\n"
                             f"📉 <b>Resultado:</b> <b>-${abs(profit):,.2f} USD</b>\n"
-                            f"📈 <b>Saldo en Cuenta:</b> <b>${self.equity:,.2f} USD</b>\n"
-                            f"🔄 <b>Siguiente postura:</b> <code>{next_stake_label}</code>"
+                            f"💵 <b>Saldo en Cuenta:</b> <b>${self.equity:,.2f} USD</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"📊 <b>Sesión Actual:</b> <code>[{bar_sess}] {curr_sess_trades}/{sess_max} ops</code>\n"
+                            f"🎯 <b>Validación Fase 3:</b> <code>[{bar_50}] {total_ft}/50 ({pct_50}%)</code>\n"
+                            f"   • Muestra acumulada: {wins_ft}W - {losses_ft}L ({wr_ft}% Win Rate)\n"
+                            f"🛡️ <b>Reconciliación:</b> {reconcile_status}"
                         )
 
                     # Generar tarjeta gráfica de resultado final con velas reales y enviar a Telegram
@@ -695,18 +775,41 @@ class BotRunner:
                     elif self.broadcast_service:
                         await self.broadcast_service.broadcast_to_channel(tg_msg)
 
-                    # Registrar en SessionManager (Meta 3%-5%)
+                    # Registrar en SessionManager (Meta 3%-5% y límite de 7 trades)
                     session_res = self.session_manager.record_trade_result(
                         net_profit=Decimal(str(profit)),
                         is_win=is_win,
                         current_equity=self.equity
                     )
 
-                    # Si se alcanzó la meta de la sesión, auto-apagado protector y notificación de victoria
+                    # Si se alcanzó la meta o el límite de la sesión, auto-apagado protector
                     if session_res.get("just_reached"):
                         self.is_running = False
                         t_reason = session_res.get("target_reason", "")
-                        if t_reason == "META_10K_ALCANZADA":
+                        if t_reason == "SESSION_LIMIT_7_REACHED":
+                            target_msg = self.admin_handler.handle_session_trades_completed_report(
+                                wins=session_res.get("wins", 0),
+                                losses=session_res.get("losses", 0),
+                                pnl_usd=float(session_res.get("session_profit", 0.0)),
+                                pnl_pct=float(session_res.get("session_profit_pct", 0.0)),
+                                current_equity=float(self.equity),
+                                total_sample_trades=total_ft
+                            )
+                        elif t_reason == "STOP_LOSS_SESION":
+                            self.risk_manager.is_daily_drawdown_locked = True
+                            target_msg = (
+                                f"🛡️ <b>FRENO DE SEGURIDAD ACTIVADO (STOP LOSS DE SESIÓN -3.0%)</b> 🛡️\n"
+                                f"━━━━━━━━━━━━━━━━━━━━\n"
+                                f"📉 <b>Pérdida en la Sesión:</b> <b>${session_res.get('session_profit', 0):,.2f} USD ({session_res.get('session_profit_pct', 0):.2f}%)</b>\n"
+                                f"💰 <b>Saldo Protegido:</b> <b>${self.equity:,.2f} USD</b>\n"
+                                f"📊 <b>Operaciones:</b> {session_res.get('trades_count', 0)} "
+                                f"({session_res.get('wins', 0)} Ganadas / {session_res.get('losses', 0)} Perdidas)\n"
+                                f"━━━━━━━━━━━━━━━━━━━━\n"
+                                f"🛑 <b>DISCIPLINA DE CAPITAL:</b> El bot se ha apagado automáticamente para blindar tu saldo.\n"
+                                f"🔒 <b>CANDADO DE RIESGO:</b> Nuevas entradas quedan estrictamente bloqueadas durante el resto del día.\n"
+                                f"🌅 <i>Se reactivará automáticamente mañana a las <b>07:00 AM</b> con la nueva jornada bancaria.</i>"
+                            )
+                        elif t_reason == "META_10K_ALCANZADA":
                             target_msg = (
                                 f"🎉🏆 <b>¡MISIÓN CUMPLIDA! SALDO SUPERÓ LOS $10,000 USD</b> 🏆🎉\n"
                                 f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -715,19 +818,7 @@ class BotRunner:
                                 f"📊 <b>Operaciones Totales:</b> {session_res.get('trades_count', 0)} "
                                 f"({session_res.get('wins', 0)} Ganadas / {session_res.get('losses', 0)} Perdidas)\n"
                                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                                f"<i>El bot ha detenido la maratón de aprendizaje en la cima. ¡Excelente resultado!</i>"
-                            )
-                        elif t_reason == "STOP_LOSS_SESION":
-                            target_msg = (
-                                f"🛡️ <b>FRENO DE SEGURIDAD ACTIVADO (STOP LOSS DE SESIÓN)</b> 🛡️\n"
-                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                                f"📉 <b>Pérdida en la Sesión:</b> <b>${session_res.get('session_profit', 0):,.2f} USD ({session_res.get('session_profit_pct', 0):.2f}%)</b>\n"
-                                f"💰 <b>Saldo Protegido:</b> <b>${self.equity:,.2f} USD</b>\n"
-                                f"📊 <b>Operaciones:</b> {session_res.get('trades_count', 0)} "
-                                f"({session_res.get('wins', 0)} Ganadas / {session_res.get('losses', 0)} Perdidas)\n"
-                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                                f"🛑 <b>DISCIPLINA DE CAPITAL:</b> El bot se ha apagado automáticamente para evitar una racha negativa y proteger tu cuenta.\n\n"
-                                f"<i>Para reiniciar una nueva sesión cuando el mercado esté más claro, usa ▶️ Iniciar Trading.</i>"
+                                f"<i>El bot ha detenido la maratón en la cima. ¡Excelente resultado!</i>"
                             )
                         else:
                             t_pct = session_res.get("target_pct", Decimal("3.0"))
@@ -742,12 +833,13 @@ class BotRunner:
                                 f"📊 <b>Operaciones Realizadas:</b> {session_res.get('trades_count', 0)} "
                                 f"({session_res.get('wins', 0)} Ganadas / {session_res.get('losses', 0)} Perdidas)\n"
                                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                                f"🛡️ <b>DISCIPLINA DE ORO:</b> El bot se ha apagado automáticamente para blindar tus beneficios y evitar devolver capital al broker.\n\n"
-                                f"<i>¡Felicidades por la sesión ganadora! Para iniciar una nueva meta escribe /iniciar o usa el botón ▶️ Iniciar Bot.</i>"
+                                f"🛡️ <b>DISCIPLINA DE ORO:</b> El bot se ha apagado automáticamente para blindar tus beneficios.\n\n"
+                                f"<i>¡Felicidades por la sesión ganadora! Pulsa ▶️ Iniciar Trading para otra ronda.</i>"
                             )
                         if client and target_chat:
                             try:
-                                await client.send_message(target_chat, target_msg)
+                                keyboard = self.admin_handler.get_main_menu_keyboard()
+                                await client.send_message(target_chat, target_msg, reply_markup=keyboard)
                             except Exception as tg_err:
                                 logger.error(f"[SESSION MANAGER] Error enviando alerta de meta a Telegram: {tg_err}")
 
@@ -758,6 +850,21 @@ class BotRunner:
             except Exception as e:
                 logger.error(f"[IQOPTION WATCHER] Error consultando resultado {exchange_order_id}: {e}")
             await asyncio.sleep(3)
+
+        # Fallback de seguridad si se agotaron los 18 intentos sin respuesta del broker:
+        logger.warning(
+            f"[IQOPTION WATCHER] Tiempo de espera agotado para orden {exchange_order_id} en {symbol}. "
+            f"Liberando posición activa para permitir que el bot continúe operando."
+        )
+        if symbol in self.risk_manager.active_positions:
+            del self.risk_manager.active_positions[symbol]
+        await self._refresh_balance()
+        try:
+            from app.database.order_repository import close_position_record
+            async with get_db_session() as session:
+                await close_position_record(session, symbol, realized_pnl=Decimal("0"))
+        except Exception:
+            pass
 
     async def _execute_sell(self, sig, symbol: str, exit_reason: str = "SIGNAL") -> None:
         """Closes an open position via a SELL order, computes PnL, and sends visual reports."""
