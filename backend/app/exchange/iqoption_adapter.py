@@ -184,12 +184,15 @@ class IQOptionAdapter:
                 if status:
                     instrument_type = "BINARY"
                 
-            # 3. Fallback: Try Digital Option (Digital Spot)
-            if not status and hasattr(self.client, "buy_digital_spot"):
+            # 3. Fallback: Try Digital Option with safe timeout (prevents infinite while loop in iqoptionapi)
+            if not status and hasattr(self.client, "api") and self.client.api:
                 logger.info(f"[IQOPTION] Binary options unavailable for {active}. Retrying with Digital Option...")
                 try:
-                    dig_status, dig_id = await asyncio.to_thread(
-                        self.client.buy_digital_spot, active, invest_amount, action, duration_minutes
+                    dig_status, dig_id = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            self._safe_buy_digital_spot, active, invest_amount, action, duration_minutes
+                        ),
+                        timeout=8.0
                     )
                     if dig_status and dig_id:
                         status = True
@@ -200,7 +203,9 @@ class IQOptionAdapter:
                     logger.debug(f"[IQOPTION] Digital option attempt failed: {dig_err}")
 
             if not status or not order_id:
-                logger.warning(f"[IQOPTION] ⚠️ Broker rejected order on {active} (market closed, instrument paused, or zero payout at this time).")
+                logger.warning(
+                    f"[IQOPTION] ⚠️ Broker rejected order on {active} (market closed, instrument paused, or zero payout at this time)."
+                )
                 return {
                     "id": None,
                     "status": "rejected",
@@ -229,6 +234,44 @@ class IQOptionAdapter:
                 "reason": str(e)
             }
 
+    def _safe_buy_digital_spot(self, active: str, amount: float, action: str, duration: int) -> tuple:
+        """Safe wrapper around digital options placement that avoids iqoptionapi's infinite while-loop."""
+        if not self.client or not hasattr(self.client, "api") or not self.client.api:
+            return False, None
+        try:
+            from datetime import datetime, timedelta
+            from iqoptionapi.expiration import get_expiration_time
+            dir_char = 'P' if action.lower() == 'put' else 'C'
+            ts = int(self.client.api.timesync.server_timestamp)
+            if duration == 1:
+                exp, _ = get_expiration_time(ts, duration)
+            else:
+                now_date = datetime.fromtimestamp(ts) + timedelta(minutes=1, seconds=30)
+                for _ in range(60):
+                    if now_date.minute % duration == 0 and time.mktime(now_date.timetuple()) - ts > 30:
+                        break
+                    now_date += timedelta(minutes=1)
+                exp = time.mktime(now_date.timetuple())
+
+            date_str = str(datetime.utcfromtimestamp(exp).strftime("%Y%m%d%H%M"))
+            instrument_id = f"do{active}{date_str}PT{duration}M{dir_char}SPT"
+            self.client.api.digital_option_placed_id = None
+            self.client.api.place_digital_option(instrument_id, amount)
+
+            start_wait = time.time()
+            while self.client.api.digital_option_placed_id is None:
+                if time.time() - start_wait > 5.0:  # Timeout estricto de 5s para nunca congelar
+                    break
+                time.sleep(0.1)
+
+            placed_id = self.client.api.digital_option_placed_id
+            if isinstance(placed_id, int):
+                return True, placed_id
+            return False, placed_id
+        except Exception as e:
+            logger.debug(f"[IQOPTION] Safe digital buy error: {e}")
+            return False, None
+
     async def fetch_open_orders(self, symbols: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """IQ Option options close automatically on expiry."""
         return []
@@ -246,22 +289,49 @@ class IQOptionAdapter:
             return False, 0.0
         try:
             oid = int(order_id)
-            # 1. Check Binary Option
-            async_data = await asyncio.to_thread(self.client.get_async_order, oid)
+            # 1. Check Binary Option with 5s timeout
+            async_data = await asyncio.wait_for(
+                asyncio.to_thread(self.client.get_async_order, oid),
+                timeout=5.0
+            )
             if async_data and async_data.get("option-closed") and async_data["option-closed"] != {}:
                 msg = async_data["option-closed"].get("msg", {})
                 profit = float(msg.get("profit_amount", 0.0)) - float(msg.get("amount", 0.0))
                 return True, profit
 
-            # 2. Check Digital Option
-            if hasattr(self.client, "check_win_digital_v2"):
-                dig_res = await asyncio.to_thread(self.client.check_win_digital_v2, oid)
-                if isinstance(dig_res, tuple) and len(dig_res) >= 2:
-                    is_closed, profit = dig_res[0], float(dig_res[1] or 0.0)
-                    if is_closed:
-                        return True, profit
+            # 2. Check Digital Option with safe non-blocking check
+            dig_res = await asyncio.wait_for(
+                asyncio.to_thread(self._safe_check_win_digital, oid),
+                timeout=5.0
+            )
+            if isinstance(dig_res, tuple) and len(dig_res) >= 2:
+                is_closed, profit = dig_res[0], float(dig_res[1] or 0.0)
+                if is_closed:
+                    return True, profit
         except Exception as e:
             logger.debug(f"[IQOPTION] Error checking order {order_id} result: {e}")
+        return False, 0.0
+
+    def _safe_check_win_digital(self, buy_order_id: int) -> tuple:
+        """Safe non-blocking checker for digital options that never enters infinite loops."""
+        if not self.client or not hasattr(self.client, "get_async_order"):
+            return False, 0.0
+        try:
+            start_w = time.time()
+            while time.time() - start_w < 4.0:
+                order_data_dict = self.client.get_async_order(buy_order_id)
+                pos_changed = order_data_dict.get("position-changed", {})
+                if pos_changed and pos_changed != {}:
+                    order_data = pos_changed.get("msg")
+                    if order_data and order_data.get("status") == "closed":
+                        if order_data.get("close_reason") == "expired":
+                            return True, float(order_data.get("close_profit", 0.0)) - float(order_data.get("invest", 0.0))
+                        elif order_data.get("close_reason") == "default":
+                            return True, float(order_data.get("pnl_realized", 0.0))
+                    return False, 0.0
+                time.sleep(0.2)
+        except Exception:
+            pass
         return False, 0.0
 
     async def cancel_order(self, order_id: str, symbol: str) -> bool:

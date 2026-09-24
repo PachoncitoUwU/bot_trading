@@ -464,15 +464,18 @@ class BotRunner:
                 f"client_id={client_order_id}"
             )
         else:
-            # TESTNET / LIVE: send real order to exchange
+            # TESTNET / LIVE: send real order to exchange with hard 15s timeout
             try:
-                order_resp = await self.exchange.create_order(
-                    symbol=symbol,
-                    order_type=OrderType.MARKET,
-                    side=side,
-                    amount=size,
-                    client_order_id=client_order_id,
-                    duration_minutes=trade_duration,
+                order_resp = await asyncio.wait_for(
+                    self.exchange.create_order(
+                        symbol=symbol,
+                        order_type=OrderType.MARKET,
+                        side=side,
+                        amount=size,
+                        client_order_id=client_order_id,
+                        duration_minutes=trade_duration,
+                    ),
+                    timeout=15.0
                 )
                 
                 if not order_resp or order_resp.get("status") == "rejected" or not order_resp.get("id"):
