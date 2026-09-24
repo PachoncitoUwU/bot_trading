@@ -183,8 +183,24 @@ class IQOptionAdapter:
                 )
                 if status:
                     instrument_type = "BINARY"
+
+            # 3. Fallback: If standard Forex pair is closed for binary, retry on 24/7 OTC asset
+            if not status and not active.endswith("-OTC"):
+                otc_active = f"{active}-OTC"
+                logger.info(f"[IQOPTION] {active} closed for binary. Retrying on 24/7 OTC market ({otc_active})...")
+                status, order_id = await asyncio.to_thread(
+                    self.client.buy, invest_amount, otc_active, action, duration_minutes
+                )
+                if not status and duration_minutes != 1:
+                    status, order_id = await asyncio.to_thread(
+                        self.client.buy, invest_amount, otc_active, action, 1
+                    )
+                if status:
+                    symbol = otc_active
+                    active = otc_active
+                    instrument_type = "BINARY"
                 
-            # 3. Fallback: Try Digital Option with safe timeout (prevents infinite while loop in iqoptionapi)
+            # 4. Fallback: Try Digital Option with safe timeout (prevents infinite while loop in iqoptionapi)
             if not status and hasattr(self.client, "api") and self.client.api:
                 logger.info(f"[IQOPTION] Binary options unavailable for {active}. Retrying with Digital Option...")
                 try:

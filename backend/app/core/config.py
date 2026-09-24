@@ -28,8 +28,8 @@ try:
         IQOPTION_MARTINGALE_STEPS: List[float] = [50.0, 100.0, 200.0]
 
         TRADING_SYMBOLS: List[str] = [
-            "EURUSD", "GBPUSD", "EURGBP",
-            "EURJPY", "USDCHF", "GBPJPY", "NZDUSD", "AUDCAD"
+            "EURUSD-OTC", "GBPUSD-OTC", "EURGBP-OTC",
+            "EURJPY-OTC", "USDCHF-OTC", "GBPJPY-OTC", "NZDUSD-OTC", "AUDCAD-OTC"
         ]
         DEFAULT_TIMEFRAME: str = "1m"
 
