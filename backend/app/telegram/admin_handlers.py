@@ -80,18 +80,18 @@ class TelegramAdminHandler:
     ) -> str:
         """Friendly account status, balance, and live AI thoughts report."""
         exch = settings.EXCHANGE_ID.upper()
-        mode_str = f"DEMO / PRACTICE ({exch})" if mode in (BotMode.PAPER, BotMode.TESTNET) else f"CUENTA REAL {exch} 🚀"
-        cash_val = available_cash if available_cash is not None else current_equity
+        mode_str = f"DEMO / PRÁCTICA ({exch})" if mode in (BotMode.PAPER, BotMode.TESTNET) else f"CUENTA REAL {exch} 🚀"
 
         pos_lines = []
         if self.risk_manager.active_positions:
             for sym, pos in self.risk_manager.active_positions.items():
+                clean_sym = sym.replace("-OTC", "")
                 pos_lines.append(
-                    f"  • <b>{sym}:</b> Operación abierta (🎯 TP: +3.0% | 🛡 SL: -1.5%)"
+                    f"  • <b>{clean_sym}:</b> Operación en curso (5m) • Stake: <b>$25.00 USD</b>"
                 )
         else:
             if is_running:
-                pos_lines.append("  • <i>Sin operaciones abiertas en este segundo. Escaneando confluencias...</i>")
+                pos_lines.append("  • <i>Sin operaciones abiertas en este segundo. Escaneando confluencia triple...</i>")
             else:
                 pos_lines.append("  • <i>El bot está en pausa. Pulsa '▶️ Iniciar Trading' para empezar.</i>")
 
@@ -103,25 +103,28 @@ class TelegramAdminHandler:
             for s, t in list(ai_thoughts.items())[:4]:
                 clean_s = s.replace("-OTC", "")
                 thought_lines.append(f"  • <b>{clean_s}:</b> <i>{t}</i>")
-        thought_str = "\n".join(thought_lines) if thought_lines else "  • <i>Analizando velas de 1m en búsqueda de sobrecompra/sobreventa...</i>"
+        thought_str = "\n".join(thought_lines) if thought_lines else "  • <i>Analizando mercado OTC en búsqueda de confluencias de alta precisión...</i>"
 
-        status_badge = "🟢 <b>ACTIVO Y ESCANEANDO EN VIVO</b>" if is_running else "⏸️ <b>EN PAUSA / STANDBY</b>"
+        status_badge = "🟢 <b>ACTIVO Y OPERANDO (100% AUTÓNOMO)</b>" if is_running else "⏸️ <b>EN PAUSA / STANDBY</b>"
 
         return (
-            "📊 <b>ESTADO DE TU CUENTA Y RADAR IA</b>\n"
+            "📊 <b>ESTADO DEL BOT Y RADAR SNIPER IA</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            f"🤖 <b>Estado del Bot:</b> {status_badge}\n"
+            f"🤖 <b>Estado:</b> {status_badge}\n"
             f"💼 <b>Cuenta:</b> <code>{mode_str}</code>\n"
             f"💰 <b>Saldo en Cuenta:</b> <b>${current_equity:,.2f} USD</b>\n"
+            f"💵 <b>Inversión por Trade:</b> <b>$25.00 USD</b> 🛡️ (Fijo / Cero Martingala)\n"
+            f"⏱️ <b>Expiración:</b> <b>5 Minutos</b> (Filtro anti-ruido)\n"
+            f"🎯 <b>Criterio Sniper:</b> Confluencia Triple (Bollinger + RSI + Pinbar/EMA)\n"
             f"🎯 <b>Meta de Sesión:</b> <b>+{target_mode}</b> (Auto-apagado protector)\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "📈 <b>Operaciones en Curso:</b>\n"
             f"{pos_str}\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "🧠 <b>Diagnóstico en Vivo de la IA:</b>\n"
+            "🧠 <b>Radar en Vivo de la IA:</b>\n"
             f"{thought_str}\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "🛡 <b>Protección de Fondos:</b> Stop Loss de Sesión -3% Activo ✅"
+            "🛡 <b>Protección de Fondos:</b> Stop Loss Diario Activo ✅"
         )
 
     def handle_start_bot(self, user_id: str, target_pct: str = "3.5%", max_trades: int = 7) -> str:
@@ -241,12 +244,13 @@ class TelegramAdminHandler:
         return (
             f"💰 <b>RESUMEN DE GANANCIAS DE TU CUENTA</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏁 <b>Capital Inicial:</b> ${initial_equity:,.2f} USDT\n"
-            f"💵 <b>Capital Actual:</b> <b>${equity:,.2f} USDT</b>\n\n"
+            f"🏁 <b>Capital Inicial:</b> ${initial_equity:,.2f} USD\n"
+            f"💵 <b>Capital Actual:</b> <b>${equity:,.2f} USD</b>\n\n"
             f"{icon} <b>Ganancia Total Acumulada:</b> <b>{sign}${diff:,.2f} USD ({sign}{pnl_pct:.2f}%)</b> 💵\n"
             f"📊 <b>Operaciones Completadas:</b> {closed_trades_count}\n"
+            f"💵 <b>Gestión:</b> Stake Fijo $25.00 USD (Cero Martingala)\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "<i>Todos los resultados son calculados matemáticamente en base a precios reales de Binance.</i>"
+            "<i>Todos los resultados son calculados matemáticamente en base a cotizaciones en tiempo real del broker.</i>"
         )
 
     def handle_radar_report(self, radar_data: Dict[str, Any], active_positions: Dict[str, Any]) -> str:

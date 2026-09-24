@@ -94,7 +94,7 @@ def generate_trade_card_image(
         explanation = "El mercado retrocedió, pero el bot frenó la pérdida para proteger tu capital."
 
     draw.text((45, 45), header_text, font=f_title, fill=accent)
-    draw.text((45, 85), f"🪙 {symbol} • Modo Demo Binance (Precios en Vivo)", font=f_subtitle, fill=text_muted)
+    draw.text((45, 85), f"🪙 {symbol} • Modo Práctica OTC (Alta Precisión Sniper)", font=f_subtitle, fill=text_muted)
 
     # Pattern Badge on top right
     badge_text = f"🧠 {pattern_name[:24]}"
@@ -103,7 +103,7 @@ def generate_trade_card_image(
 
     # 2. Main PnL Big Banner Box
     pnl_sign = "+" if net_pnl >= 0 else ""
-    pnl_str = f"{pnl_sign}${net_pnl:,.2f} USDT  ({pnl_sign}{pnl_pct:.2f}%)"
+    pnl_str = f"{pnl_sign}${net_pnl:,.2f} USD  ({pnl_sign}{pnl_pct:.2f}%)"
 
     pnl_box_top = 125
     pnl_box_bottom = 230
@@ -122,8 +122,8 @@ def generate_trade_card_image(
     box_data = [
         ("📥 Compró a:", f"${entry_price:,.2f}"),
         ("📤 Vendió a:", f"${exit_price:,.2f}"),
-        ("💵 Inversión:", f"${invested_amount:,.2f}" if invested_amount else "Automática"),
-        ("🏦 Saldo en Cuenta:", f"${account_equity:,.2f}" if account_equity else "Actualizado"),
+        ("💵 Inversión:", f"${invested_amount:,.2f} USD" if invested_amount else "$25.00 USD"),
+        ("🏦 Saldo en Cuenta:", f"${account_equity:,.2f} USD" if account_equity else "Actualizado"),
     ]
 
     for idx, (lbl, val) in enumerate(box_data):
@@ -138,7 +138,7 @@ def generate_trade_card_image(
     draw.text((65, 388), f"💡 {explanation}", font=f_footer, fill=text_white)
 
     # 5. Footer Signature
-    draw.text((45, 448), "🤖 Binance Trading Hub • Sistema 100% Autónomo con Gestión de Riesgo", font=f_footer, fill=text_muted)
+    draw.text((45, 448), "🤖 AI Sniper Trading Bot • Sistema 100% Autónomo con Gestión de Riesgo", font=f_footer, fill=text_muted)
 
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", quality=95)

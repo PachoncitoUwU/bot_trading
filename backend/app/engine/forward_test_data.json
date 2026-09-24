@@ -4,17 +4,121 @@
   "start_time": "2026-09-21T15:28:00.000000",
   "target_trades": 300,
   "checkpoint_trades": 50,
-  "total_trades": 0,
-  "wins": 0,
-  "losses": 0,
-  "net_pnl": 0.0,
+  "total_trades": 6,
+  "wins": 2,
+  "losses": 4,
+  "net_pnl": -59.0,
   "starting_balance": 9230.31,
-  "current_balance": 9230.31,
+  "current_balance": 9131.51,
   "peak_balance": 9230.31,
-  "max_drawdown_usd": 0.0,
-  "max_drawdown_pct": 0.0,
-  "patterns": {},
-  "trades": [],
+  "max_drawdown_usd": 98.8,
+  "max_drawdown_pct": 1.07,
+  "patterns": {
+    "Estrella Fugaz / Pinbar Bajista": {
+      "wins": 1,
+      "losses": 2,
+      "net_pnl": -29.5,
+      "win_rate": 33.3
+    },
+    "Confluencia Sniper PUT": {
+      "wins": 1,
+      "losses": 1,
+      "net_pnl": -4.5,
+      "win_rate": 50.0
+    },
+    "Impulso Alcista Fuerte": {
+      "wins": 0,
+      "losses": 1,
+      "net_pnl": -25.0,
+      "win_rate": 0.0
+    }
+  },
+  "trades": [
+    {
+      "num": 1,
+      "order_id": "14292387464",
+      "time": "2026-09-24 22:49:04 UTC",
+      "symbol": "EURGBP-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "Estrella Fugaz / Pinbar Bajista",
+      "side": "PUT",
+      "stake": 25.0,
+      "is_win": false,
+      "profit": -25.0,
+      "balance": 9211.01
+    },
+    {
+      "num": 2,
+      "order_id": "14292406982",
+      "time": "2026-09-24 22:56:09 UTC",
+      "symbol": "AUDCAD-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "Estrella Fugaz / Pinbar Bajista",
+      "side": "PUT",
+      "stake": 25.0,
+      "is_win": false,
+      "profit": -25.0,
+      "balance": 9161.01
+    },
+    {
+      "num": 3,
+      "order_id": "14292417054",
+      "time": "2026-09-24 23:00:13 UTC",
+      "symbol": "USDCHF-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "Estrella Fugaz / Pinbar Bajista",
+      "side": "PUT",
+      "stake": 25.0,
+      "is_win": true,
+      "profit": 20.5,
+      "balance": 9136.01
+    },
+    {
+      "num": 4,
+      "order_id": "14292425247",
+      "time": "2026-09-24 23:02:04 UTC",
+      "symbol": "GBPUSD-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "Confluencia Sniper PUT",
+      "side": "PUT",
+      "stake": 25.0,
+      "is_win": false,
+      "profit": -25.0,
+      "balance": 9181.51
+    },
+    {
+      "num": 5,
+      "order_id": "14292436462",
+      "time": "2026-09-24 23:07:03 UTC",
+      "symbol": "EURJPY-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "Impulso Alcista Fuerte",
+      "side": "PUT",
+      "stake": 25.0,
+      "is_win": false,
+      "profit": -25.0,
+      "balance": 9131.51
+    },
+    {
+      "num": 6,
+      "order_id": "14292440396",
+      "time": "2026-09-24 23:08:15 UTC",
+      "symbol": "GBPUSD-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "Confluencia Sniper PUT",
+      "side": "PUT",
+      "stake": 25.0,
+      "is_win": true,
+      "profit": 20.5,
+      "balance": 9131.51
+    }
+  ],
   "archives": [
     {
       "archived_at": "2026-09-21T15:28:00.000000",
@@ -23,7 +127,10 @@
       "wins": 21,
       "losses": 32,
       "win_rate": 39.6,
-      "ci_wilson_95": [27.6, 53.1],
+      "ci_wilson_95": [
+        27.6,
+        53.1
+      ],
       "net_pnl": -769.26,
       "conclusion": "Evidencia empirica solida en contra de edge en OTC 1m. Limite superior 53.1% < Breakeven 55-57%."
     }

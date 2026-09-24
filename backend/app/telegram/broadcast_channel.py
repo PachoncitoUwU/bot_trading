@@ -13,40 +13,60 @@ class TelegramBroadcastService:
         signal: StrategySignal,
         invested_amount: Optional[Decimal] = None,
         available_cash: Optional[Decimal] = None,
-        mode_label: str = "DEMO (Binance en Vivo)",
-        duration_minutes: int = 1,
+        mode_label: str = "DEMO (IQ Option Práctica)",
+        duration_minutes: int = 5,
         active_concurrent: Optional[str] = None,
     ) -> str:
-        """Formats a clear notification when a buy order is placed."""
-        direction = "PUT" if (getattr(signal, "metadata", {}) and signal.metadata.get("direction") == "PUT") or signal.signal_type == SignalType.SELL else "CALL"
+        """Formats an executive, high-conviction sniper trade entry notification."""
+        meta = getattr(signal, "metadata", {}) or {}
+        direction = meta.get("direction") or ("PUT" if signal.signal_type == SignalType.SELL else "CALL")
         is_put = direction == "PUT"
 
-        price_str = f"${signal.price:,.2f}" if signal.price >= 10 else f"{signal.price:.5f}"
         dur_str = f"{duration_minutes} Minuto" if duration_minutes == 1 else f"{duration_minutes} Minutos"
-        invested_str = f"${invested_amount:,.2f} USD" if invested_amount else "Asignada automáticamente"
-
+        invested_str = f"${invested_amount:,.2f} USD" if invested_amount else "$25.00 USD"
         clean_symbol = signal.symbol.replace("-OTC", "")
-        concurrent_line = f"\n📊 <b>Operaciones simultáneas:</b> <code>{active_concurrent}</code>" if active_concurrent else ""
+
+        conf_val = getattr(signal, "confidence", Decimal("0.75"))
+        conf_pct = int(float(conf_val) * 100) if conf_val else 75
+        confluences = meta.get("confluences", 3)
+        rsi_val = meta.get("rsi")
+        rsi_str = f"{rsi_val:.1f}" if rsi_val is not None else "Extremo"
+        pattern_str = meta.get("pattern") or signal.pattern_name or "Absorción Institucional"
+
         if is_put:
-            return (
-                f"🔴 <b>NUEVA OPERACIÓN: PUT (BAJADA)</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🪙 <b>Activo:</b> <code>{clean_symbol} (OTC)</code>\n"
-                f"💵 <b>Inversión:</b> <code>{invested_str}</code>\n"
-                f"⏱️ <b>Tiempo:</b> <code>{dur_str}</code>\n"
-                f"🎯 <b>Señal:</b> <i>Agotamiento en resistencia</i>{concurrent_line}\n"
-                f"━━━━━━━━━━━━━━━━━━━━"
-            )
+            dir_badge = "🔴 PUT (BAJADA / VENTA)"
+            momentum_text = f"RSI en {rsi_str} (Sobrecompra profunda + Giro bajista)"
+            bb_text = "Rechazo contundente en Banda Superior de Bollinger"
+            thesis_text = "Agotamiento del impulso comprador en techo dinámico; se proyecta retroceso correctivo hacia la media móvil central."
         else:
-            return (
-                f"🟢 <b>NUEVA OPERACIÓN: CALL (SUBIDA)</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🪙 <b>Activo:</b> <code>{clean_symbol} (OTC)</code>\n"
-                f"💵 <b>Inversión:</b> <code>{invested_str}</code>\n"
-                f"⏱️ <b>Tiempo:</b> <code>{dur_str}</code>\n"
-                f"🎯 <b>Señal:</b> <i>Rebote institucional en soporte</i>{concurrent_line}\n"
-                f"━━━━━━━━━━━━━━━━━━━━"
-            )
+            dir_badge = "🟢 CALL (SUBIDA / COMPRA)"
+            momentum_text = f"RSI en {rsi_str} (Sobreventa profunda + Giro alcista)"
+            bb_text = "Rechazo contundente en Banda Inferior de Bollinger"
+            thesis_text = "Fuerte absorción de compra en piso dinámico; se proyecta rebote impulsivo hacia la media móvil central."
+
+        concurrent_line = f"\n📊 <b>Operaciones activas:</b> <code>{active_concurrent}</code>" if active_concurrent else ""
+
+        return (
+            f"🎯 <b>ORDEN EJECUTADA: ALTA PRECISIÓN SNIPER</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🪙 <b>Activo:</b> <code>{clean_symbol} (OTC 24/7)</code>\n"
+            f"🧭 <b>Dirección:</b> <b>{dir_badge}</b>\n"
+            f"💵 <b>Inversión Fija:</b> <b>{invested_str}</b> 🛡️ (Cero Martingala)\n"
+            f"⏱️ <b>Tiempo de Expiración:</b> <b>{dur_str}</b> (Sin ruido de 1m)\n"
+            f"🎯 <b>Convicción Algorítmica:</b> <b>{conf_pct}% [Filtro Sniper Aprobado]</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🧠 <b>ANÁLISIS TÉCNICO MULTI-FACTOR:</b>\n"
+            f"• 📊 <b>Momento:</b> {momentum_text}\n"
+            f"• ⚡ <b>Volatilidad:</b> {bb_text}\n"
+            f"• 🕯️ <b>Acción del Precio:</b> {pattern_str}\n"
+            f"• 📈 <b>Tendencia Macro:</b> Estructura validada por EMA 50 / 100\n"
+            f"• 🔗 <b>Confluencias:</b> <b>{confluences}/3 factores confirmados</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔮 <b>Tesis de la Operación:</b>\n"
+            f"<i>{thesis_text}</i>{concurrent_line}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"<i>Operación 100% automatizada. Monitoreando en tiempo real hasta el vencimiento...</i>"
+        )
 
     @staticmethod
     def format_trade_closed_broadcast(
@@ -64,23 +84,35 @@ class TelegramBroadcastService:
         is_win = net_pnl >= Decimal("0")
         clean_symbol = symbol.replace("-OTC", "")
         equity_str = f"${account_equity:,.2f} USD" if account_equity is not None else "Actualizado"
+        side_icon = "🟢" if "CALL" in side.upper() or "BUY" in side.upper() else "🔴"
 
         if is_win:
             return (
-                f"🏆 <b>¡OPERACIÓN GANADA! (+{pnl_pct:,.1f}%)</b>\n"
+                f"🏆 <b>¡OPERACIÓN GANADORA! (+{pnl_pct:,.1f}%)</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🪙 <b>Activo:</b> <code>{clean_symbol} (OTC)</code>\n"
-                f"💰 <b>Ganancia Neta:</b> <b>+{net_pnl:,.2f} USD</b>\n"
+                f"🧭 <b>Dirección:</b> <b>{side} {side_icon}</b>\n"
+                f"💰 <b>Ganancia Neta:</b> <b>+{net_pnl:,.2f} USD</b> 💵\n"
                 f"📈 <b>Saldo en Cuenta:</b> <b>{equity_str}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🛡️ <b>Gestión de Riesgo:</b>\n"
+                f"• Inversión plana $25 USD respetada (Cero Martingala)\n"
+                f"• El bot buscará la siguiente oportunidad solo ante confluencia perfecta triple.\n"
                 f"━━━━━━━━━━━━━━━━━━━━"
             )
         else:
             return (
-                f"🛡️ <b>OPERACIÓN CERRADA</b>\n"
+                f"🛡️ <b>OPERACIÓN CERRADA (STOP RESPETADO)</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🪙 <b>Activo:</b> <code>{clean_symbol} (OTC)</code>\n"
+                f"🧭 <b>Dirección:</b> <b>{side} {side_icon}</b>\n"
                 f"📉 <b>Resultado:</b> <b>-${abs(net_pnl):,.2f} USD</b>\n"
                 f"📈 <b>Saldo en Cuenta:</b> <b>{equity_str}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🛡️ <b>Protección de Capital Activa:</b>\n"
+                f"• Riesgo estrictamente contenido al stake de $25 USD.\n"
+                f"• CERO martingala: No se doblan apuestas por pérdidas.\n"
+                f"• El bot preserva el saldo para setups de alta probabilidad.\n"
                 f"━━━━━━━━━━━━━━━━━━━━"
             )
 

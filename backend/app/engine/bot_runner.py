@@ -71,8 +71,8 @@ class BotRunner:
         self.last_candle_cache: Dict[str, list] = {}
         self._tick_count: int = 0
         self.trade_history: List[Dict[str, Any]] = []
-        self.duration_minutes: int = 1
-        self.max_concurrent_binary_trades: int = 2  # Permite hasta 2 operaciones simultáneas en diferentes pares
+        self.duration_minutes: int = 5
+        self.max_concurrent_binary_trades: int = 1  # Francotirador: 1 operación a la vez para máxima concentración
         self._pair_cooldowns: Dict[str, float] = {}  # Anti-revancha: cooldown por símbolo
         self.equity_curve: List[Dict[str, Any]] = [
             {"time": "Inicio", "equity": 10000.0, "pnl": 0.0, "is_win": True}
@@ -380,15 +380,9 @@ class BotRunner:
         current_step = self.staking_manager.current_step_index + 1
 
         # Selección de duración inteligente:
-        # En el Paso 3 ($200 USD), forzamos 3m a 5m para que no sufra por el ruido aleatorio de 1m
-        if current_step == 3:
-            trade_duration = 3 if sig_conf < Decimal("0.85") else 5
-        elif sig_conf >= Decimal("0.80") and sig_confluences >= 3:
-            trade_duration = 5
-        elif sig_conf >= Decimal("0.65") or sig_confluences >= 2:
-            trade_duration = 3
-        else:
-            trade_duration = 1
+        # Alta Convicción Sniper: Duración fija de 5 minutos
+        # Filtra el ruido errático de 1 minuto y permite que la confluencia técnica se desarrolle limpiamente
+        trade_duration = 5
 
         if settings.EXCHANGE_ID.lower() == "iqoption":
             import time
@@ -719,31 +713,34 @@ class BotRunner:
 
                     if is_win:
                         tg_msg = (
-                            f"🏆 <b>¡OPERACIÓN GANADA! (+87%)</b>\n"
+                            f"🏆 <b>¡OPERACIÓN GANADORA! (+85%)</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━\n"
                             f"🪙 <b>Activo:</b> <code>{clean_symbol} ({mkt_type})</code>\n"
                             f"🧭 <b>Dirección:</b> <b>{side_label} {side_icon}</b> | ⏱️ <b>Tiempo:</b> <code>{dur_str}</code>\n"
-                            f"💰 <b>Ganancia Neta:</b> <b>+${profit:,.2f} USD</b>\n"
-                            f"💵 <b>Saldo en Cuenta:</b> <b>${self.equity:,.2f} USD</b>\n"
+                            f"💵 <b>Inversión:</b> <b>${stake:,.2f} USD</b> 🛡️ (Fija / Cero Martingala)\n"
+                            f"💰 <b>Ganancia Neta:</b> <b>+${profit:,.2f} USD</b> 💵\n"
+                            f"📈 <b>Saldo en Cuenta:</b> <b>${self.equity:,.2f} USD</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━\n"
-                            f"📊 <b>Sesión Actual:</b> <code>[{bar_sess}] {curr_sess_trades}/{sess_max} ops</code>\n"
-                            f"🎯 <b>Validación Fase 3:</b> <code>[{bar_50}] {total_ft}/50 ({pct_50}%)</code>\n"
-                            f"   • Muestra acumulada: {wins_ft}W - {losses_ft}L ({wr_ft}% Win Rate)\n"
-                            f"🛡️ <b>Reconciliación:</b> {reconcile_status}"
+                            f"📊 <b>Sesión de Hoy:</b> <code>[{bar_sess}] {curr_sess_trades}/{sess_max} ops</code>\n"
+                            f"🎯 <b>Efectividad Acumulada:</b> <b>{wins_ft}W - {losses_ft}L ({wr_ft}% Win Rate)</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"<i>El bot continúa escaneando con paciencia buscando solo operaciones de muy alta probabilidad.</i>"
                         )
                     else:
                         tg_msg = (
-                            f"🛑 <b>OPERACIÓN CERRADA (Protección de Capital)</b>\n"
+                            f"🛡️ <b>OPERACIÓN CERRADA (STOP RESPETADO)</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━\n"
                             f"🪙 <b>Activo:</b> <code>{clean_symbol} ({mkt_type})</code>\n"
                             f"🧭 <b>Dirección:</b> <b>{side_label} {side_icon}</b> | ⏱️ <b>Tiempo:</b> <code>{dur_str}</code>\n"
+                            f"💵 <b>Inversión:</b> <b>${stake:,.2f} USD</b> 🛡️ (Fija / Cero Martingala)\n"
                             f"📉 <b>Resultado:</b> <b>-${abs(profit):,.2f} USD</b>\n"
-                            f"💵 <b>Saldo en Cuenta:</b> <b>${self.equity:,.2f} USD</b>\n"
+                            f"📈 <b>Saldo en Cuenta:</b> <b>${self.equity:,.2f} USD</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━━\n"
-                            f"📊 <b>Sesión Actual:</b> <code>[{bar_sess}] {curr_sess_trades}/{sess_max} ops</code>\n"
-                            f"🎯 <b>Validación Fase 3:</b> <code>[{bar_50}] {total_ft}/50 ({pct_50}%)</code>\n"
-                            f"   • Muestra acumulada: {wins_ft}W - {losses_ft}L ({wr_ft}% Win Rate)\n"
-                            f"🛡️ <b>Reconciliación:</b> {reconcile_status}"
+                            f"🛡️ <b>Gestión de Riesgo Protegida:</b>\n"
+                            f"• CERO Martingala: No se dobla la apuesta tras una pérdida.\n"
+                            f"• Pérdida estrictamente acotada al stake fijo de $25 USD.\n"
+                            f"• Esperando la siguiente confluencia perfecta triple con disciplina.\n"
+                            f"━━━━━━━━━━━━━━━━━━━━"
                         )
 
                     # Generar tarjeta gráfica de resultado final con velas reales y enviar a Telegram
@@ -1032,55 +1029,15 @@ class BotRunner:
             return
         try:
             side_str = "CALL" if side == OrderSide.BUY else "PUT"
-            dur_str = f"{duration_minutes} Minuto" if duration_minutes == 1 else f"{duration_minutes} Minutos"
-            price_disp = f"${sig.price:,.2f}" if sig.price >= 10 else f"{sig.price:.5f}"
-            clean_symbol = sig.symbol.replace("-OTC", "")
-            action_title = "🟢 NUEVA OPERACIÓN: CALL (SUBIDA)" if side_str == "CALL" else "🔴 NUEVA OPERACIÓN: PUT (BAJADA)"
-            reason_short = "Rebote institucional en soporte" if side_str == "CALL" else "Agotamiento en resistencia"
-            if "Martillo" in sig.reason or "Pinbar" in sig.reason:
-                reason_short = "Rechazo de mecha institucional (Pinbar)"
-            elif "Bollinger" in sig.reason and "RSI" in sig.reason:
-                reason_short = "Extremo de volatilidad (Bollinger + RSI)"
-
-            if invested_amount and invested_amount >= Decimal("50.0"):
-                conviction_tag = "💎 Máxima Convicción ($50 USD)"
-            elif invested_amount and invested_amount >= Decimal("25.0"):
-                conviction_tag = "🚀 Alta Convicción / Recuperación ($25 USD)"
-            else:
-                conviction_tag = "🛡️ Base Aprendizaje ($10 USD)"
-
             concurrent_info = f"{len(self.risk_manager.active_positions)}/{self.max_concurrent_binary_trades}"
 
-            # Formular la expectativa técnica clara (¿Qué se espera de esta operación?)
-            if side_str == "CALL":
-                expected_outcome = "Se espera una absorción de compradores en zona de soporte que impulse el precio al alza buscando el retorno a las medias móviles (EMA 9/21), revirtiendo la caída previa."
-            else:
-                expected_outcome = "Se espera un rechazo de vendedores en la resistencia de Bollinger que devuelva el precio hacia el centro del canal, aprovechando el agotamiento del impulso alcista."
-
-            if "Martillo" in sig.reason or "Pinbar Alcista" in sig.reason:
-                expected_outcome = "La mecha inferior demostró fuerte entrada institucional de compradores; se espera una vela alcista de confirmación hacia la EMA 21."
-            elif "Estrella Fugaz" in sig.reason or "Pinbar Bajista" in sig.reason:
-                expected_outcome = "La mecha superior demostró rechazo masivo en la resistencia; se espera una caída correctiva hacia el soporte más cercano."
-            elif "Cruce Dorado" in sig.reason:
-                expected_outcome = "El cruce de la EMA 9 sobre la EMA 21 a favor de la EMA 50 indica expansión tendencial; se espera continuidad del flujo comprador durante los próximos minutos."
-            elif "Cruce Bajista" in sig.reason:
-                expected_outcome = "El cruce bajista confirmado bajo la EMA 50 indica presión vendedora sostenida; se espera continuidad a la baja tras el retesteo."
-            elif "Agotamiento" in sig.reason:
-                expected_outcome = "Clímax de sobre-extensión en bandas extremas; se espera un rebote correctivo violento en contra de la trampa de mercado."
-
-            text = (
-                f"<b>{action_title}</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🪙 <b>Activo:</b> <code>{clean_symbol} (OTC)</code>\n"
-                f"💵 <b>Inversión:</b> <code>${invested_amount:,.2f} USD</code> ({conviction_tag})\n"
-                f"⏱️ <b>Tiempo Expiración:</b> <code>{dur_str}</code>\n"
-                f"🎯 <b>¿Por qué se entra?:</b> <i>{reason_short}</i>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🔮 <b>¿Qué se espera de esta operación?:</b>\n"
-                f"<i>{expected_outcome}</i>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"📊 <b>Operaciones activas:</b> <code>{concurrent_info}</code>\n"
-                f"<i>📸 Gráfica técnica con flecha de entrada adjunta abajo</i>"
+            text = self.broadcast_service.format_signal_broadcast(
+                signal=sig,
+                invested_amount=invested_amount,
+                available_cash=available_cash,
+                mode_label=self.get_mode_label(),
+                duration_minutes=duration_minutes,
+                active_concurrent=concurrent_info,
             )
 
             # Generate chart screenshot card with arrow

@@ -43,10 +43,10 @@
   },
   "Impulso Alcista Fuerte": {
     "wins": 45,
-    "losses": 56,
-    "weight": 0.7,
-    "total_pnl": -1478.0,
-    "win_rate": 44.6
+    "losses": 57,
+    "weight": 1.0,
+    "total_pnl": -1578.0,
+    "win_rate": 44.1
   },
   "Envolvente Bajista": {
     "wins": 46,
@@ -70,11 +70,11 @@
     "win_rate": 44.3
   },
   "Estrella Fugaz / Pinbar Bajista": {
-    "wins": 39,
-    "losses": 46,
-    "weight": 0.75,
-    "total_pnl": -1118.7,
-    "win_rate": 45.9
+    "wins": 40,
+    "losses": 48,
+    "weight": 1.0,
+    "total_pnl": -1236.7,
+    "win_rate": 45.5
   },
   "Confluencia Sniper CALL": {
     "wins": 24,
@@ -84,11 +84,11 @@
     "win_rate": 49.0
   },
   "Confluencia Sniper PUT": {
-    "wins": 19,
-    "losses": 18,
-    "weight": 1.05,
-    "total_pnl": -144.0,
-    "win_rate": 51.4
+    "wins": 20,
+    "losses": 19,
+    "weight": 1.0,
+    "total_pnl": -162.0,
+    "win_rate": 51.3
   },
   "Doji": {
     "wins": 0,

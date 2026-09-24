@@ -39,7 +39,7 @@ class AILearningStrategy(BaseStrategy):
             "rsi_period": 14,
             "rsi_oversold": 35,
             "rsi_overbought": 65,
-            "min_confidence": Decimal("0.58"),  # Umbral sniper: mínimo 58% de confianza para filtrar ruido OTC
+            "min_confidence": Decimal("0.70"),  # Umbral sniper estricto: mínimo 70% de confianza para alta precisión
             "base_sl_pct": Decimal("1.5"),
             "base_tp_pct": Decimal("3.0"),
             "use_internet_sentiment": True,
@@ -435,24 +435,24 @@ class AILearningStrategy(BaseStrategy):
                         f"RSI={float(rsi):.1f}/70.0, Dist={float(ema_dist_pct):.3f}%/0.04%)"
                     )
 
-            # FILTRO FRANCOTIRADOR DE ALTA PRECISIÓN: Umbral calibrado al 0.58 para capturar setups institucionales sólidos
-            active_min_conf = Decimal("0.58")
-            learning_stage = "🎯 Francotirador de Alta Precisión"
+            # FILTRO FRANCOTIRADOR DE ALTA PRECISIÓN: Pocas operaciones, ultra-analizadas (70% conf + 3 confluencias)
+            active_min_conf = Decimal("0.70")
+            learning_stage = "🎯 Francotirador Alta Convicción (3 Confluencias)"
 
             # Real-time thought display for user UI
             dominant = "CALL (Alcista)" if bull_confidence >= bear_confidence else "PUT (Bajista)"
             top_conf = max(bull_confidence, bear_confidence)
             price_disp = f"${float(current_price):,.2f}" if current_price >= 10 else f"{float(current_price):.5f}"
 
-            is_sniper_call = bull_confidence >= active_min_conf and (touched_lower_bb and rsi <= Decimal("40.0"))
-            is_sniper_put = bear_confidence >= active_min_conf and (touched_upper_bb and rsi >= Decimal("60.0"))
+            is_sniper_call = bull_confidence >= active_min_conf and bull_confluences >= 3 and (touched_lower_bb and rsi <= Decimal("38.0"))
+            is_sniper_put = bear_confidence >= active_min_conf and bear_confluences >= 3 and (touched_upper_bb and rsi >= Decimal("62.0"))
 
             if is_sniper_call or is_sniper_put:
-                status_hint = f"🎯 ¡SEÑAL CONFIRMADA ({learning_stage})!"
-            elif (touched_lower_bb and rsi <= Decimal("43.0")) or (touched_upper_bb and rsi >= Decimal("57.0")):
-                status_hint = f"⏳ Confluencia en desarrollo [{learning_stage}]..."
+                status_hint = f"🎯 ¡SEÑAL SNIPER CONFIRMADA ({int(top_conf * 100)}%)!"
+            elif (touched_lower_bb and rsi <= Decimal("40.0")) or (touched_upper_bb and rsi >= Decimal("60.0")):
+                status_hint = f"⏳ Esperando 3ra confluencia ({bull_confluences if dominant.startswith('CALL') else bear_confluences}/3)..."
             else:
-                status_hint = f"👀 Monitoreando [{learning_stage}]"
+                status_hint = "👀 Filtrando mercado (Buscando confluencia perfecta triple)"
 
             self.latest_thoughts[symbol] = (
                 f"Escaneando {symbol} (1m): Precio {price_disp} | RSI={float(rsi):.1f} | "
@@ -463,11 +463,11 @@ class AILearningStrategy(BaseStrategy):
             is_in_position = symbol in open_positions
 
             if not is_in_position:
-                # Trigger CALL: Requires bull_confidence >= 0.58, at least 2 confluences, Bollinger touch + RSI <= 40.0
+                # Trigger CALL: Requires bull_confidence >= 0.70, at least 3 confluences, Bollinger touch + RSI <= 38.0
                 if (
                     bull_confidence >= active_min_conf
-                    and bull_confluences >= 2
-                    and (touched_lower_bb and rsi <= Decimal("40.0"))
+                    and bull_confluences >= 3
+                    and (touched_lower_bb and rsi <= Decimal("38.0"))
                     and bull_confidence > bear_confidence
                 ):
                     sl_pct = self.params["base_sl_pct"]
@@ -482,7 +482,7 @@ class AILearningStrategy(BaseStrategy):
                         stop_loss=sl_price,
                         take_profit=tp_price,
                         confidence=bull_confidence,
-                        pattern_name=pattern if pattern != "Neutral" else "Confluencia Sniper CALL",
+                        pattern_name=pattern if pattern != "Neutral" else "Absorción Institucional CALL",
                         reason=f"[{learning_stage}] " + " | ".join(bull_reasons),
                         metadata={
                             "direction": "CALL",
@@ -490,20 +490,21 @@ class AILearningStrategy(BaseStrategy):
                             "pattern": pattern,
                             "confluences": bull_confluences,
                             "confidence": float(bull_confidence),
-                            "learning_stage": learning_stage
+                            "learning_stage": learning_stage,
+                            "reasons": bull_reasons,
                         }
                     )
                     signals.append(sig)
                     logger.info(
                         f"[AI SNIPER STRATEGY] 🎯 Generated CALL signal for {symbol} "
-                        f"(conf={bull_confidence:.2f}, stage={learning_stage}): {sig.reason}"
+                        f"(conf={bull_confidence:.2f}, confluences={bull_confluences}): {sig.reason}"
                     )
 
-                # Trigger PUT: Requires bear_confidence >= 0.58, at least 2 confluences, Bollinger touch + RSI >= 60.0
+                # Trigger PUT: Requires bear_confidence >= 0.70, at least 3 confluences, Bollinger touch + RSI >= 62.0
                 elif (
                     bear_confidence >= active_min_conf
-                    and bear_confluences >= 2
-                    and (touched_upper_bb and rsi >= Decimal("60.0"))
+                    and bear_confluences >= 3
+                    and (touched_upper_bb and rsi >= Decimal("62.0"))
                     and bear_confidence > bull_confidence
                 ):
                     sl_pct = self.params["base_sl_pct"]
@@ -518,7 +519,7 @@ class AILearningStrategy(BaseStrategy):
                         stop_loss=sl_price,
                         take_profit=tp_price,
                         confidence=bear_confidence,
-                        pattern_name=pattern if pattern != "Neutral" else "Confluencia Sniper PUT",
+                        pattern_name=pattern if pattern != "Neutral" else "Absorción Institucional PUT",
                         reason=f"[{learning_stage}] " + " | ".join(bear_reasons),
                         metadata={
                             "direction": "PUT",
@@ -526,13 +527,14 @@ class AILearningStrategy(BaseStrategy):
                             "pattern": pattern,
                             "confluences": bear_confluences,
                             "confidence": float(bear_confidence),
-                            "learning_stage": learning_stage
+                            "learning_stage": learning_stage,
+                            "reasons": bear_reasons,
                         }
                     )
                     signals.append(sig)
                     logger.info(
                         f"[AI SNIPER STRATEGY] 🎯 Generated PUT signal for {symbol} "
-                        f"(conf={bear_confidence:.2f}, stage={learning_stage}): {sig.reason}"
+                        f"(conf={bear_confidence:.2f}, confluences={bear_confluences}): {sig.reason}"
                     )
 
         return signals
