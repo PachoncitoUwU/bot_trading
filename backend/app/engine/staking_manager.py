@@ -31,10 +31,10 @@ class StakingManager:
     def sync_account_equity(self, equity: Decimal) -> None:
         """Dynamically sets fixed stake to exactly 0.25% of account balance (Flat Position Sizing)."""
         if equity > Decimal("10.0"):
-            base = max(Decimal("1.0"), min(Decimal("100.0"), round(equity * Decimal("0.0025"), 0)))
+            base = Decimal("25.0") if equity >= Decimal("5000.0") else max(Decimal("1.0"), min(Decimal("100.0"), round(equity * Decimal("0.0025"), 0)))
             self.steps = [base]
             self.current_step_index = 0
-            logger.info(f"[STAKING] Pure Flat Stake active: ${base:,.0f} USD fijo por operación (0.25% del capital, SIN martingala).")
+            logger.info(f"[STAKING] Pure Flat Stake active: ${base:,.0f} USD fijo por operación (Sin martingala).")
 
     def get_current_stake(self) -> Decimal:
         """Returns the stake amount in USD for the next trade."""
