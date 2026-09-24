@@ -435,8 +435,8 @@ class AILearningStrategy(BaseStrategy):
                         f"RSI={float(rsi):.1f}/70.0, Dist={float(ema_dist_pct):.3f}%/0.04%)"
                     )
 
-            # FILTRO FRANCOTIRADOR DE ALTA PRECISIÓN: Umbral de confianza elevado a 0.65
-            active_min_conf = Decimal("0.65")
+            # FILTRO FRANCOTIRADOR DE ALTA PRECISIÓN: Umbral calibrado al 0.58 para capturar setups institucionales sólidos
+            active_min_conf = Decimal("0.58")
             learning_stage = "🎯 Francotirador de Alta Precisión"
 
             # Real-time thought display for user UI
@@ -444,12 +444,12 @@ class AILearningStrategy(BaseStrategy):
             top_conf = max(bull_confidence, bear_confidence)
             price_disp = f"${float(current_price):,.2f}" if current_price >= 10 else f"{float(current_price):.5f}"
 
-            is_sniper_call = bull_confidence >= active_min_conf and (touched_lower_bb and rsi <= Decimal("38.0"))
-            is_sniper_put = bear_confidence >= active_min_conf and (touched_upper_bb and rsi >= Decimal("62.0"))
+            is_sniper_call = bull_confidence >= active_min_conf and (touched_lower_bb and rsi <= Decimal("40.0"))
+            is_sniper_put = bear_confidence >= active_min_conf and (touched_upper_bb and rsi >= Decimal("60.0"))
 
             if is_sniper_call or is_sniper_put:
                 status_hint = f"🎯 ¡SEÑAL CONFIRMADA ({learning_stage})!"
-            elif (touched_lower_bb and rsi <= Decimal("42.0")) or (touched_upper_bb and rsi >= Decimal("58.0")):
+            elif (touched_lower_bb and rsi <= Decimal("43.0")) or (touched_upper_bb and rsi >= Decimal("57.0")):
                 status_hint = f"⏳ Confluencia en desarrollo [{learning_stage}]..."
             else:
                 status_hint = f"👀 Monitoreando [{learning_stage}]"
@@ -463,11 +463,11 @@ class AILearningStrategy(BaseStrategy):
             is_in_position = symbol in open_positions
 
             if not is_in_position:
-                # Trigger CALL: Requires bull_confidence >= 0.65, at least 2 confluences, Bollinger touch + RSI <= 38.0
+                # Trigger CALL: Requires bull_confidence >= 0.58, at least 2 confluences, Bollinger touch + RSI <= 40.0
                 if (
                     bull_confidence >= active_min_conf
                     and bull_confluences >= 2
-                    and (touched_lower_bb and rsi <= Decimal("38.0"))
+                    and (touched_lower_bb and rsi <= Decimal("40.0"))
                     and bull_confidence > bear_confidence
                 ):
                     sl_pct = self.params["base_sl_pct"]
@@ -499,11 +499,11 @@ class AILearningStrategy(BaseStrategy):
                         f"(conf={bull_confidence:.2f}, stage={learning_stage}): {sig.reason}"
                     )
 
-                # Trigger PUT: Requires bear_confidence >= 0.65, at least 2 confluences, Bollinger touch + RSI >= 62.0
+                # Trigger PUT: Requires bear_confidence >= 0.58, at least 2 confluences, Bollinger touch + RSI >= 60.0
                 elif (
                     bear_confidence >= active_min_conf
                     and bear_confluences >= 2
-                    and (touched_upper_bb and rsi >= Decimal("62.0"))
+                    and (touched_upper_bb and rsi >= Decimal("60.0"))
                     and bear_confidence > bull_confidence
                 ):
                     sl_pct = self.params["base_sl_pct"]

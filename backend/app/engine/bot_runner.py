@@ -288,9 +288,9 @@ class BotRunner:
                 if settings.EXCHANGE_ID.lower() == "iqoption" and len(self.risk_manager.active_positions) >= self.max_concurrent_binary_trades:
                     break
 
-                # 1. Fetch candles
+                # 1. Fetch candles with deep historical context (120 candles = 2 hours of price action)
                 candles = await self.exchange.fetch_ohlcv(
-                    symbol, timeframe=settings.DEFAULT_TIMEFRAME, limit=60
+                    symbol, timeframe=settings.DEFAULT_TIMEFRAME, limit=120
                 )
                 self.last_candle_cache[symbol] = candles
                 if not candles or len(candles) < 2:
