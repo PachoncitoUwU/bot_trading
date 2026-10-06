@@ -1,94 +1,150 @@
-# 🤖 Autonomous AI Trading Bot (IQ Option & Binance)
+# 🤖 Autonomous AI Trading Bot (IQ Option & Telegram Hub)
 
-Sistema de trading algorítmico autónomo de alto rendimiento con análisis de confluencias por Inteligencia Artificial, control 100% remoto desde Telegram, meta diaria de ganancias (Take-Profit de 3% a 5% con auto-apagado protector), y freno de seguridad de capital (Stop-Loss de sesión).
-
----
-
-## 🚀 Características Principales
-
-* **Control Remoto desde Telegram:**
-  * `▶️ Iniciar Trading`: Activa el escaneo y fija el capital base de la sesión.
-  * `⏹️ Parar Trading`: Detiene inmediatamente nuevas entradas.
-  * `🎯 Meta (3% a 5%)`: Barra visual de progreso hacia el objetivo diario.
-  * `📊 Saldo y Balance`: Consulta el equity actual y libre en tiempo real.
-  * `💰 Ganancias / PnL`: Estadísticas de operaciones ganadas, perdidas y win rate.
-  * `⚙️ Fijar Meta`: Alterna objetivos rápidos (+3%, +4%, +5%).
-* **Meta de Sesión Inteligente (3% a 5%):**
-  * Al alcanzar la meta programada (+3% a +5% del saldo), el bot **se auto-apaga automáticamente** para proteger los beneficios y no devolver dinero al mercado.
-* **Stop Loss de Sesión (Protección de Capital):**
-  * Freno estricto si se acumula un -3% de pérdida en la sesión para evitar rachas adversas.
-* **Staking Proporcional y Seguro:**
-  * Posturas escalonadas y controladas para garantizar crecimiento sostenido.
-* **Reportes Visuales en Vivo:**
-  * Envío automático a Telegram de la tarjeta gráfica con velas reales japonesas de cada entrada y su resultado de cierre (Win/Loss).
-* **Modo de Operación 24/7:**
-  * Prevención nativa de suspensión de energía en Windows y preparado para VPS en la nube (Docker / Linux).
+> ☁️ **ESTADO: DESPLEGADO Y OPERANDO 24/7 EN LA NUBE**  
+> Sistema de trading algorítmico autónomo de alta precisión con **Estrategia Única Especializada**, control remoto integral desde Telegram, meta diaria de beneficios con auto-apagado protector (+3.5%), y freno de seguridad de capital (Stop-Loss estricto al -3.0%).
 
 ---
 
-## 🛠️ Requisitos Previos
+## ☁️ Arquitectura en la Nube: 2 Tecnologías de Despliegue
 
-* **Python 3.11+**
-* Cuenta en broker compatible (IQ Option / Binance)
-* Token de Bot de Telegram (obtenido vía [@BotFather](https://t.me/BotFather)) y tu ID de chat.
+El bot está diseñado y optimizado para ejecutarse en la nube de forma ininterrumpida sin depender de una computadora encendida en casa, utilizando **dos tecnologías complementarias**:
 
----
+```
+                       ┌────────────────────────────────────────────────────────┐
+                       │               REPOSITORIO GITHUB (main)                │
+                       └──────────────────────────┬─────────────────────────────┘
+                                                  │
+                    ┌─────────────────────────────┴─────────────────────────────┐
+                    ▼                                                           ▼
+       [TECNOLOGÍA 1: DOCKER & VPS]                              [TECNOLOGÍA 2: CLOUD PaaS (RENDER)]
+   Contenedores Docker aislados en Linux                       Despliegue continuo serverless con CI/CD
+   ├── backend (FastAPI + Uvicorn + Python 3.11)               ├── Autodespliegue por Webhook en cada git push
+   ├── frontend (Nginx Web Dashboard)                          ├── Detección de runtime.txt (Python 3.11.8)
+   └── Volumen persistente SQLite y auto-reinicio              └── requirements.txt optimizado en raíz
+                    │                                                           │
+                    └─────────────────────────────┬─────────────────────────────┘
+                                                  ▼
+                          [IQ OPTION API] ◄───► [TELEGRAM VIP BOT 24/7]
+```
 
-## ⚡ Instalación Rápida
+### 1. Tecnología 1: Docker & Docker Compose (VPS Cloud Linux)
+* **Infraestructura:** Servidores VPS en la nube (Hetzner, Oracle Cloud Always Free, DigitalOcean, Contabo).
+* **Stack:**
+  * `backend`: Contenedor Dockerizado con Python 3.11, FastAPI, WebSocket Hub y motor de ejecución asíncrono.
+  * `frontend`: Contenedor Nginx Alpine sirviendo el Dashboard interactivo en tiempo real.
+* **Resiliencia:** Política `restart: unless-stopped` que reanuda el bot automáticamente ante reinicios del servidor.
+* **Comando de arranque:**
+  ```bash
+  docker compose up -d --build
+  ```
 
-1. **Clonar el repositorio:**
-   ```bash
-   git clone https://github.com/PachoncitoUwU/bot_trading.git
-   cd bot_trading
-   ```
-
-2. **Crear entorno virtual e instalar dependencias:**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # En Windows: .\venv\Scripts\activate
-   pip install -r backend/requirements.txt
-   ```
-
-3. **Configurar variables de entorno (`.env`):**
-   Copia `.env.example` a `.env` y añade tus credenciales:
-   ```env
-   BOT_MODE=TESTNET
-   EXCHANGE_ID=iqoption
-   IQOPTION_EMAIL=tu_correo@ejemplo.com
-   IQOPTION_PASSWORD=tu_contraseña
-   IQOPTION_BALANCE_MODE=PRACTICE
-   IQOPTION_MARTINGALE_STEPS=[1.0, 2.0, 4.0]
-
-   TELEGRAM_BOT_TOKEN=tu_token_aqui
-   TELEGRAM_ADMIN_CHAT_ID=tu_chat_id_aqui
-   ```
-
-4. **Iniciar el Bot:**
-   * En Windows:
-     ```bash
-     start.bat
-     ```
-   * En Linux/Mac:
-     ```bash
-     uvicorn backend.main:app --host 0.0.0.0 --port 8000
-     ```
+### 2. Tecnología 2: Cloud PaaS Serverless (Render / Railway / Koyeb)
+* **Infraestructura:** Plataforma como servicio conectada directamente a la rama `main` de GitHub.
+* **Automatización CI/CD:** Cada cambio subido con `git push` reconstruye y actualiza el bot en la nube automáticamente sin intervención manual.
+* **Configuración nativa:**
+  * [`runtime.txt`](runtime.txt): Fija la versión de Python en `python-3.11.8`.
+  * [`requirements.txt`](requirements.txt): Gestión de dependencias limpias para compilación sin errores en entornos Linux en la nube.
+  * Resolución de rutas universal en `backend/main.py` para compatibilidad de rutas relativas.
 
 ---
 
-## 🌐 Despliegue 24/7 Gratuito
+## 🎯 Estrategia Única Especializada: Trend Pullback & Rejection Sniper (5m)
 
-### Opción 1: Oracle Cloud "Always Free" (Recomendada)
-1. Regístrate en [Oracle Cloud Free Tier](https://www.oracle.com/cloud/free/) para obtener un servidor VPS gratuito de por vida (4 vCPU ARM, 24 GB RAM).
-2. Crea una instancia Ubuntu Always Free.
-3. Clona el repositorio y lanza el bot con Docker:
-   ```bash
-   docker-compose up -d --build
-   ```
+Para maximizar la tasa de acierto y eliminar el ruido del mercado, el bot **se especializa en una única estrategia institucional** de alta probabilidad, descartando entradas dispersas o persecución de velas:
 
-### Opción 2: Ejecución Local 24/7 (Laptop / PC en casa)
-El bot incluye `app/core/power_manager.py` (`enable_24_7_execution_mode()`), el cual le indica a Windows no suspenderse ni apagar la red aunque cierres la tapa de la laptop mientras esté conectada al cargador.
+```
+[1. Tendencia Clara EMA 50/100] ──> [2. Pullback a Zona de Valor (EMA 21/BB)] ──> [3. Vela de Rechazo Pinbar >=60%] ──> [4. Disparo Sniper 5m]
+```
+
+### Pilares del Setup Único:
+1. **Filtro de Tendencia Absoluto (Cero Contratendencia):**
+   * **Solo CALL (Compras):** El precio debe estar por encima de la EMA 50 y EMA 100 con pendiente alcista.
+   * **Solo PUT (Ventas):** El precio debe estar por debajo de la EMA 50 y EMA 100 con pendiente bajista.
+2. **Zona de Valor (Retroceso / Pullback):**
+   * Se espera pacientemente el retroceso hacia la media de Bollinger o la EMA de 21 periodos. Queda **prohibido entrar persiguiendo velas gigantes de impulso**.
+3. **Gatillo de Rechazo Institucional (Price Action):**
+   * La vela en la zona de soporte/resistencia debe dejar una **mecha de absorción superior al 60% del rango total de la vela** (Martillos, Pinbars, Estrellas Fugaces).
+   * Confirmación por inflexión de RSI saliendo de zonas extremas (<=38 para CALL, >=62 para PUT).
+4. **Temporalidad y Expiración:**
+   * **Expiración a 5 minutos:** Elimina el ruido aleatorio de las velas de 60 segundos, permitiendo que el rebote institucional se complete limpiamente.
+
+---
+
+## ⚙️ Configuración de Variables de Entorno (`.env`)
+
+El archivo `.env` en el servidor cloud gestiona todas las credenciales y reglas de gestión monetaria:
+
+```env
+# MODO DE OPERACIÓN
+BOT_MODE=TESTNET
+EXCHANGE_ID=iqoption
+USE_TESTNET=true
+
+# CREDENCIALES IQ OPTION
+IQOPTION_EMAIL=tu_correo@ejemplo.com
+IQOPTION_PASSWORD=tu_contraseña
+IQOPTION_BALANCE_MODE=PRACTICE
+IQOPTION_MARTINGALE_STEPS=[50.0, 100.0, 200.0]
+
+# ACTIVOS Y TEMPORALIDAD
+TRADING_SYMBOLS=["EURUSD-OTC", "GBPUSD-OTC", "EURGBP-OTC", "EURJPY-OTC", "USDCHF-OTC", "GBPJPY-OTC", "NZDUSD-OTC", "AUDCAD-OTC"]
+DEFAULT_TIMEFRAME=1m
+
+# GESTIÓN DE RIESGO ESTRICTA
+MAX_DAILY_DRAWDOWN_PCT=3.0
+MAX_ACCOUNT_EXPOSURE_PCT=20.0
+MAX_RISK_PER_TRADE_PCT=1.0
+CIRCUIT_BREAKER_MAX_ERRORS=3
+
+# CONTROL REMOTO TELEGRAM
+TELEGRAM_BOT_TOKEN=tu_token_aqui
+TELEGRAM_ADMIN_CHAT_ID=tu_chat_id_aqui
+TELEGRAM_CHANNEL_ID=
+TELEGRAM_SIGNAL_TTL_SECONDS=45
+TELEGRAM_HEARTBEAT_MINUTES=60
+
+# ENTORNO Y BASE DE DATOS
+APP_ENV=development
+PORT=8000
+DATABASE_URL=sqlite+aiosqlite:///./trading_bot.db
+```
+
+---
+
+## 📱 Control Remoto 100% Móvil desde Telegram
+
+Toda la supervisión y control del bot se realiza desde el celular mediante botones interactivos en Telegram:
+
+* **`▶️ Iniciar Trading`**: Activa el escaneo autónomo en vivo y fija el balance de partida.
+* **`⏹️ Parar Trading`**: Pausa inmediatamente nuevas entradas.
+* **`🎯 Meta y Progreso`**: Visualiza la barra de avance hacia el Take-Profit diario (+3.5%).
+* **`📊 Saldo y Balance`**: Consulta de equity y fondos disponibles en IQ Option.
+* **`💰 Ganancias / PnL`**: Reporte de operaciones ganadas, perdidas y win rate.
+* **Auto-Apagado Protector**: Al alcanzar la meta fijada (+3.5%), el bot se desconecta solo y asegura los beneficios sin sobreoperar.
+* **Freno Stop-Loss**: Si se alcanza el -3.0% de pérdida en el día, se bloquea la sesión para proteger el capital.
+
+---
+
+## 🚀 Actualización y Despliegue de Cambios
+
+Para actualizar el bot en la nube tras cualquier modificación:
+
+```bash
+git add .
+git commit -m "feat: actualizar bot y estrategia sniper"
+git push origin main
+```
+
+* **En Render / PaaS:** El despliegue se inicia automáticamente al recibir el `git push`.
+* **En VPS Docker:**
+  ```bash
+  ssh root@TU_IP_VPS
+  cd /root/bot
+  git pull origin main
+  docker compose up -d --build
+  ```
 
 ---
 
 ## 🛡️ Descargo de Responsabilidad (Disclaimer)
-El trading algorítmico y de derivados conlleva riesgos financieros. Este software está diseñado para propósitos educativos y de prueba en entornos DEMO / PRACTICE. El usuario asume toda la responsabilidad por las decisiones financieras tomadas.
+El trading algorítmico y de derivados conlleva riesgos financieros. Este software está diseñado para propósitos educativos y de prueba en entornos DEMO / PRACTICE.

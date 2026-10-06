@@ -63,18 +63,18 @@
     "win_rate": 16.7
   },
   "Martillo / Pinbar Alcista": {
-    "wins": 51,
-    "losses": 64,
-    "weight": 0.6,
-    "total_pnl": -1960.0,
-    "win_rate": 44.3
+    "wins": 52,
+    "losses": 67,
+    "weight": 1.0,
+    "total_pnl": -2178.0,
+    "win_rate": 43.7
   },
   "Estrella Fugaz / Pinbar Bajista": {
-    "wins": 40,
-    "losses": 48,
+    "wins": 42,
+    "losses": 49,
     "weight": 1.0,
-    "total_pnl": -1236.7,
-    "win_rate": 45.5
+    "total_pnl": -1172.7,
+    "win_rate": 46.2
   },
   "Confluencia Sniper CALL": {
     "wins": 24,

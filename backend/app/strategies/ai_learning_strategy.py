@@ -291,11 +291,10 @@ class AILearningStrategy(BaseStrategy):
                     # Envolvente en medio del canal sin soporte: Descartada para evitar trampas
                     bull_reasons.append("Envolvente descartada: Sin confluencia de soporte/Bollinger")
 
-            # C) Continuación de Impulso Institucional a Favor de Tendencia
-            elif "Impulso Alcista Fuerte" in pattern and current_price > slow_ema and fast_ema > mid_ema and rsi < Decimal("72.0"):
-                bull_confluences += 1
-                bull_confidence += Decimal("0.35")
-                bull_reasons.append("Impulso Alcista Institucional Confirmado a Favor de Tendencia (CALL)")
+            # C) Descarte de persecución de impulso (Especialización estricta en Pullback & Rechazo)
+            elif "Impulso Alcista Fuerte" in pattern:
+                # No perseguir velas gigantes de impulso para evitar retrocesos en la siguiente vela
+                bull_reasons.append("Impulso detectado: En espera de retroceso/pullback a zona de soporte")
 
             # 4. Trend & EMA Confluence (Pullback in uptrend or golden cross)
             crossover_bullish = prev_fast <= prev_mid and fast_ema > mid_ema
@@ -389,11 +388,10 @@ class AILearningStrategy(BaseStrategy):
                 else:
                     bear_reasons.append("Envolvente descartada: Sin confluencia de resistencia/Bollinger")
 
-            # C) Continuación de Impulso Institucional a Favor de Tendencia
-            elif "Impulso Bajista Fuerte" in pattern and current_price < slow_ema and fast_ema < mid_ema and rsi > Decimal("28.0"):
-                bear_confluences += 1
-                bear_confidence += Decimal("0.35")
-                bear_reasons.append("Impulso Bajista Institucional Confirmado a Favor de Tendencia (PUT)")
+            # C) Descarte de persecución de impulso (Especialización estricta en Pullback & Rechazo)
+            elif "Impulso Bajista Fuerte" in pattern:
+                # No perseguir velas gigantes rojas para evitar rebote de absorción en contra
+                bear_reasons.append("Impulso bajista detectado: En espera de retroceso/pullback a zona de resistencia")
 
             # 4. Trend & EMA Confluence (Pullback in downtrend or death cross)
             crossover_bearish = prev_fast >= prev_mid and fast_ema < mid_ema
