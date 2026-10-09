@@ -45,14 +45,14 @@ class FibonacciRetracementStrategy(BaseStrategy):
 
     def __init__(self, symbols: List[str], timeframe: str = "1m", params: Optional[Dict[str, Any]] = None):
         default_params = {
-            "swing_window": 40,           # Cantidad de velas para detectar Swing High y Swing Low
-            "min_impulse_pct": Decimal("0.05"),  # Amplitud mínima del impulso (% del precio, ~5 pips)
-            "tolerance_pct": Decimal("0.04"),    # Tolerancia de proximidad al nivel Fib (en %)
-            "trend_ema": 50,              # EMA intermedia para dirección de tendencia
-            "macro_ema": 150,             # EMA macro institucional
+            "swing_window": 35,           # Cantidad de velas para detectar Swing High y Swing Low
+            "min_impulse_pct": Decimal("0.03"),  # Amplitud mínima del impulso (% del precio, ~3 pips)
+            "tolerance_pct": Decimal("0.06"),    # Tolerancia de proximidad al nivel Fib (en %)
+            "trend_ema": 30,              # EMA intermedia para dirección de tendencia
+            "macro_ema": 100,             # EMA macro institucional
             "rsi_period": 14,             # Periodo de RSI para confluencia
             "min_confidence": Decimal("0.70"), # Umbral de confianza mínimo para disparar señal
-            "rejection_wick_ratio": Decimal("1.2"), # Ratio de mecha respecto al cuerpo para validar rechazo
+            "rejection_wick_ratio": Decimal("0.8"), # Ratio de mecha respecto al cuerpo para validar rechazo
         }
         if params:
             default_params.update(params)

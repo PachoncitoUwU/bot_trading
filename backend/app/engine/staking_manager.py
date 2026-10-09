@@ -17,11 +17,11 @@ from app.core.logger import logger
 class StakingManager:
     """Manages dynamic position sizing, conviction-based scaling, and recovery sequences."""
 
-    MAX_ALLOWED_STAKE: Decimal = Decimal("100.0")
+    MAX_ALLOWED_STAKE: Decimal = Decimal("150.0")
 
     def __init__(self, steps: Optional[List[float]] = None):
-        # 100% FLAT STAKE: Posición fija sin escalada tras pérdidas (Pure Fixed Fractional 0.25%)
-        self.steps = [Decimal("25.0")]
+        # 100% FLAT STAKE: $55.0 USD fijo por operación (Sin martingala)
+        self.steps = [Decimal("55.0")]
         self.current_step_index: int = 0
         self.consecutive_losses: int = 0
         self.consecutive_wins: int = 0
@@ -29,16 +29,14 @@ class StakingManager:
         self.history: List[Dict[str, Any]] = []
 
     def sync_account_equity(self, equity: Decimal) -> None:
-        """Dynamically sets fixed stake to exactly 0.25% of account balance (Flat Position Sizing)."""
-        if equity > Decimal("10.0"):
-            base = Decimal("25.0") if equity >= Decimal("5000.0") else max(Decimal("1.0"), min(Decimal("100.0"), round(equity * Decimal("0.0025"), 0)))
-            self.steps = [base]
-            self.current_step_index = 0
-            logger.info(f"[STAKING] Pure Flat Stake active: ${base:,.0f} USD fijo por operación (Sin martingala).")
+        """Sets flat stake to exactly 55 USD per trade as configured by the user."""
+        self.steps = [Decimal("55.0")]
+        self.current_step_index = 0
+        logger.info(f"[STAKING] Pure Flat Stake active: $55.00 USD fijo por operación (Sin martingala).")
 
     def get_current_stake(self) -> Decimal:
         """Returns the stake amount in USD for the next trade."""
-        return self.steps[0] if self.steps else Decimal("25.0")
+        return self.steps[0] if self.steps else Decimal("55.0")
 
     def calculate_dynamic_stake(
         self,

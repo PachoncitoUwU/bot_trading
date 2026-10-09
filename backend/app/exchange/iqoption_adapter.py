@@ -204,6 +204,7 @@ class IQOptionAdapter:
                 await asyncio.to_thread(self.client.change_balance, self.balance_type)
 
             logger.info(f"[IQOPTION] Placing {action.upper()} on {active} for ${invest_amount} (Requested duration: {duration_minutes}m)...")
+            instrument_type = "BINARY"
             candidates = []
             base_clean = active.replace("-OTC", "").replace("-OP", "")
             candidates.append(f"{base_clean}-op")
