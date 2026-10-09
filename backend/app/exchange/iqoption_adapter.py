@@ -209,12 +209,11 @@ class IQOptionAdapter:
 
             logger.info(f"[IQOPTION] Placing {action.upper()} on {active} for ${invest_amount} (Requested duration: {duration_minutes}m)...")
             instrument_type = "BINARY"
-            candidates = []
-            base_clean = active.replace("-OTC", "").replace("-OP", "")
-            candidates.append(f"{base_clean}-op")
-            candidates.append(active)
-            candidates.append(base_clean)
-            candidates.append(f"{base_clean}-OTC")
+            base_clean = active.replace("-OTC", "").replace("-otc", "").replace("-OP", "").replace("-op", "")
+            if "-OTC" in active.upper():
+                candidates = [active, f"{base_clean}-OTC", f"{base_clean}-op", base_clean]
+            else:
+                candidates = [f"{base_clean}-op", active, base_clean, f"{base_clean}-OTC"]
             
             # Deduplicate preserving order
             unique_candidates = []

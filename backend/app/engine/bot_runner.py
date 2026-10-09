@@ -78,6 +78,7 @@ class BotRunner:
         self.closed_trades_count = 0
         self.last_candle_cache: Dict[str, list] = {}
         self._tick_count: int = 0
+        self.trade_history: List[Dict[str, Any]] = []
         self.duration_minutes: int = 1
         if hasattr(settings, "DEFAULT_TIMEFRAME"):
             self.set_timeframe(settings.DEFAULT_TIMEFRAME)
