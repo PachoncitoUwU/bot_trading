@@ -18,12 +18,16 @@ class SessionManager:
         target_mode: str = "3.5%",  # "3%", "3.5%", "4%", "5%", "AUTO"
         hourly_cycle_enabled: bool = False,
         active_minutes: int = 60,
-        rest_minutes: int = 60,
+        rest_minutes: int = 50,
+        weekend_autopilot: bool = True,
+        weekend_deadline: Optional[datetime] = None,
     ):
         self.target_mode: str = target_mode
         self.hourly_cycle_enabled: bool = hourly_cycle_enabled
         self.active_minutes: int = active_minutes
         self.rest_minutes: int = rest_minutes
+        self.weekend_autopilot: bool = weekend_autopilot
+        self.weekend_deadline: datetime = weekend_deadline or datetime(2026, 10, 11, 23, 59, 59)
 
         # Session Financials & 7-Trade Limit
         self.session_starting_equity: Decimal = Decimal("10000.00")
@@ -36,11 +40,19 @@ class SessionManager:
         self.daily_sl_locked_date: Optional[str] = None
         self.last_daily_schedule_day: Optional[str] = None
 
+        # Cumulative Weekend Autopilot Stats
+        self.weekend_start_equity: Optional[Decimal] = None
+        self.total_weekend_trades: int = 0
+        self.total_weekend_wins: int = 0
+        self.total_weekend_losses: int = 0
+        self.total_weekend_net_profit: Decimal = Decimal("0.00")
+        self.completed_sections_count: int = 0
+
         # Target State
         self.is_target_reached: bool = False
         self.target_reached_at: Optional[datetime] = None
 
-        # Hourly Cycle State
+        # Hourly / Section Cycle State
         self.cycle_state: str = "ACTIVE"  # "ACTIVE" | "RESTING"
         self.cycle_start_time: float = time.time()
         self.session_start_time: datetime = datetime.now()
@@ -68,6 +80,8 @@ class SessionManager:
         if equity > Decimal("0"):
             self.session_starting_equity = equity
             self.current_equity = equity
+            if self.weekend_start_equity is None or self.weekend_start_equity <= Decimal("0"):
+                self.weekend_start_equity = equity
             self.session_net_profit = Decimal("0.00")
             self.is_target_reached = False
             self.session_start_time = datetime.now()
@@ -143,14 +157,19 @@ class SessionManager:
     def record_trade_result(self, net_profit: Decimal, is_win: bool, current_equity: Decimal) -> Dict[str, Any]:
         """
         Updates session statistics after a trade closes and evaluates if target is met.
+        Also accumulates total weekend autopilot telemetry.
         """
         self.session_closed_trades += 1
+        self.total_weekend_trades += 1
         if is_win:
             self.session_wins += 1
+            self.total_weekend_wins += 1
         else:
             self.session_losses += 1
+            self.total_weekend_losses += 1
 
         self.session_net_profit += net_profit
+        self.total_weekend_net_profit += net_profit
         self.current_equity = current_equity
 
         profit_pct = Decimal("0.0")
@@ -213,7 +232,7 @@ class SessionManager:
             target_reason = "SESSION_LIMIT_7_REACHED"
             logger.info(
                 f"[SESSION MANAGER] 🏁 Límite de sesión alcanzado ({self.session_closed_trades}/{self.session_max_trades} operaciones). "
-                f"Resultado: {self.session_wins}W - {self.session_losses}L | PnL: ${self.session_net_profit:,.2f} ({profit_pct:.2f}%). Deteniendo bot."
+                f"Resultado: {self.session_wins}W - {self.session_losses}L | PnL: ${self.session_net_profit:,.2f} ({profit_pct:.2f}%)."
             )
 
         return {
@@ -227,43 +246,80 @@ class SessionManager:
             "trades_count": self.session_closed_trades,
             "wins": self.session_wins,
             "losses": self.session_losses,
+            "total_weekend_trades": self.total_weekend_trades,
+            "total_weekend_wins": self.total_weekend_wins,
+            "total_weekend_losses": self.total_weekend_losses,
+            "total_weekend_profit": self.total_weekend_net_profit,
         }
 
-    def check_hourly_cycle(self) -> Tuple[bool, str]:
+    def start_section_rest(self, rest_minutes: Optional[int] = None, reason: str = "SESSION_LIMIT_7_REACHED") -> Dict[str, Any]:
+        """Transitions from ACTIVE to RESTING between sections, scheduling the next automatic session."""
+        from datetime import timedelta
+        if rest_minutes is not None:
+            self.rest_minutes = rest_minutes
+        self.completed_sections_count += 1
+        self.cycle_state = "RESTING"
+        self.cycle_start_time = time.time()
+        self.is_target_reached = False
+
+        resume_at = datetime.now() + timedelta(minutes=self.rest_minutes)
+        resume_str = resume_at.strftime("%I:%M %p")
+
+        profit_pct = Decimal("0.0")
+        if self.session_starting_equity > Decimal("0"):
+            profit_pct = (self.session_net_profit / self.session_starting_equity) * Decimal("100")
+
+        logger.info(
+            f"[SESSION MANAGER] ⏱️ Section #{self.completed_sections_count} completed ({self.session_closed_trades} trades, "
+            f"{self.session_wins}W - {self.session_losses}L, PnL: ${self.session_net_profit:,.2f}). "
+            f"Entering rest period of {self.rest_minutes} min until {resume_str}."
+        )
+        return {
+            "section_number": self.completed_sections_count,
+            "section_trades": self.session_closed_trades,
+            "section_wins": self.session_wins,
+            "section_losses": self.session_losses,
+            "section_profit": self.session_net_profit,
+            "section_profit_pct": profit_pct,
+            "current_equity": self.current_equity,
+            "total_weekend_trades": self.total_weekend_trades,
+            "total_weekend_wins": self.total_weekend_wins,
+            "total_weekend_losses": self.total_weekend_losses,
+            "total_weekend_profit": self.total_weekend_net_profit,
+            "rest_minutes": self.rest_minutes,
+            "resume_time_str": resume_str,
+            "reason": reason,
+        }
+
+    def check_cycle_status(self) -> Tuple[bool, str, bool]:
         """
-        Checks if the bot should be active or resting based on the hourly schedule.
-        Returns (can_trade: bool, status_message: str).
+        Evaluates whether the bot can trade or is currently in resting cooldown.
+        Returns: (can_trade: bool, status_message: str, just_resumed: bool)
         """
-        if not self.hourly_cycle_enabled:
-            return True, "Modo continuo 24/7 sin descansos por hora."
-
-        elapsed_sec = time.time() - self.cycle_start_time
-        active_sec = self.active_minutes * 60
-        rest_sec = self.rest_minutes * 60
-
-        if self.cycle_state == "ACTIVE":
-            if elapsed_sec >= active_sec:
-                # Switch to RESTING
-                self.cycle_state = "RESTING"
-                self.cycle_start_time = time.time()
-                logger.info(f"[SESSION MANAGER] ⏱️ 1-hour active block completed. Entering RESTING cooldown ({self.rest_minutes} min).")
-                return False, f"Descanso programado iniciado. Reposo de {self.rest_minutes} minutos para enfriar el mercado."
-            else:
-                remaining_min = int((active_sec - elapsed_sec) / 60)
-                return True, f"Bloque activo: quedan {remaining_min} min de operativa."
-
-        elif self.cycle_state == "RESTING":
+        if self.cycle_state == "RESTING":
+            elapsed_sec = time.time() - self.cycle_start_time
+            rest_sec = self.rest_minutes * 60
             if elapsed_sec >= rest_sec:
-                # Switch to ACTIVE
+                # Rest cooldown finished! Resuming next section!
+                self.reset_session(self.current_equity)
                 self.cycle_state = "ACTIVE"
                 self.cycle_start_time = time.time()
-                logger.info("[SESSION MANAGER] ⏱️ Rest cooldown finished. Resuming new 1-hour active block.")
-                return True, "Descanso completado. Reanudando bloque activo de operaciones."
+                logger.info(f"[SESSION MANAGER] 🚀 Rest period finished ({self.rest_minutes} min). Resuming next autonomous trading section!")
+                return True, "Descanso finalizado. Reanudando operaciones.", True
             else:
-                remaining_rest = int((rest_sec - elapsed_sec) / 60)
-                return False, f"En reposo de seguridad: faltan {remaining_rest} min para el siguiente bloque activo."
+                rem_min = max(1, int((rest_sec - elapsed_sec) / 60))
+                return False, f"En reposo de mercado ({rem_min} min restantes para enfriar el mercado). Próxima tanda automática.", False
 
-        return True, "OK"
+        return True, "Bloque activo de operaciones.", False
+
+    def is_weekend_finished(self) -> bool:
+        """Returns True if the weekend autopilot deadline (Sunday 23:59:59) has arrived."""
+        return datetime.now() >= self.weekend_deadline
+
+    def check_hourly_cycle(self) -> Tuple[bool, str]:
+        """Checks if bot can trade or is resting (backwards compatibility)."""
+        can_trade, msg, _ = self.check_cycle_status()
+        return can_trade, msg
 
     def get_progress_data(self) -> Dict[str, Any]:
         """Generates detailed progress indicators for Telegram and Dashboard."""
@@ -322,6 +378,12 @@ class SessionManager:
             "losses": self.session_losses,
             "win_rate": round((self.session_wins / self.session_closed_trades * 100), 1) if self.session_closed_trades > 0 else 0.0,
             "daily_sl_locked": self.daily_sl_locked_date == datetime.now().strftime("%Y-%m-%d"),
+            "total_weekend_trades": self.total_weekend_trades,
+            "total_weekend_wins": self.total_weekend_wins,
+            "total_weekend_losses": self.total_weekend_losses,
+            "total_weekend_profit": self.total_weekend_net_profit,
+            "completed_sections_count": self.completed_sections_count,
+            "weekend_autopilot": self.weekend_autopilot,
         }
 
     def can_start_manual_session(self) -> Tuple[bool, str]:

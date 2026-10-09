@@ -30,6 +30,8 @@ MODERN_ACTIVE_IDS = {
     "NZDUSD": 1896, "NZDUSD-OP": 1896, "NZDUSD-OTC": 1896,
     "GBPCAD": 1897, "GBPCAD-OP": 1897, "GBPCAD-OTC": 1897,
     "USDCAD": 1878, "USDCAD-OP": 1878, "USDCAD-OTC": 1878,
+    "USDCHF": 78, "USDCHF-OP": 78, "USDCHF-OTC": 78,
+    "AUDCAD": 86, "AUDCAD-OP": 86, "AUDCAD-OTC": 86,
 }
 
 
@@ -87,6 +89,8 @@ class IQOptionAdapter:
                 "NZDUSD": 1896, "NZDUSD-OP": 1896, "NZDUSD-OTC": 1896,
                 "GBPCAD": 1897, "GBPCAD-OP": 1897, "GBPCAD-OTC": 1897,
                 "USDCAD": 1878, "USDCAD-OP": 1878, "USDCAD-OTC": 1878,
+                "USDCHF": 78, "USDCHF-OP": 78, "USDCHF-OTC": 78,
+                "AUDCAD": 86, "AUDCAD-OP": 86, "AUDCAD-OTC": 86,
             }
             for k, v in MODERN_ACTIVE_IDS.items():
                 OP_code.ACTIVES[k] = v

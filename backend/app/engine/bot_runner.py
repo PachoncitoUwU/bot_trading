@@ -1,6 +1,6 @@
 """Main Bot Lifecycle Runner and Trading Loop Orchestrator."""
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -51,7 +51,14 @@ class BotRunner:
         self.circuit_breaker = CircuitBreaker(max_consecutive_errors=settings.CIRCUIT_BREAKER_MAX_ERRORS)
         self.risk_manager = RiskManager(circuit_breaker=self.circuit_breaker)
         self.staking_manager = StakingManager()
-        self.session_manager = SessionManager(target_mode="3.5%", hourly_cycle_enabled=False)
+        self.session_manager = SessionManager(
+            target_mode="3.5%",
+            hourly_cycle_enabled=True,
+            active_minutes=60,
+            rest_minutes=50,
+            weekend_autopilot=True,
+            weekend_deadline=datetime(2026, 10, 11, 23, 59, 59),
+        )
         self.reconciler = StateReconciler(self.exchange)
         self.signal_manager = InteractiveSignalManager(default_ttl_seconds=settings.TELEGRAM_SIGNAL_TTL_SECONDS)
         self.admin_handler = TelegramAdminHandler(self.risk_manager, self.reconciler, self.signal_manager)
@@ -71,8 +78,9 @@ class BotRunner:
         self.closed_trades_count = 0
         self.last_candle_cache: Dict[str, list] = {}
         self._tick_count: int = 0
-        self.trade_history: List[Dict[str, Any]] = []
-        self.duration_minutes: int = 5
+        self.duration_minutes: int = 1
+        if hasattr(settings, "DEFAULT_TIMEFRAME"):
+            self.set_timeframe(settings.DEFAULT_TIMEFRAME)
         self.max_concurrent_binary_trades: int = 1  # Francotirador: 1 operación a la vez para máxima concentración
         self._pair_cooldowns: Dict[str, float] = {}  # Anti-revancha: cooldown por símbolo
         self.equity_curve: List[Dict[str, Any]] = [
@@ -219,14 +227,19 @@ class BotRunner:
             logger.warning("[RUNNER] Tick skipped: Circuit breaker is TRIPPED.")
             return
 
-        # 0. Verificación de Meta de Ganancia (Take Profit de Sesión 3%-5%)
-        if self.session_manager.is_target_reached:
-            # Si el usuario explícitamente reanudó el bot (is_running == True), reiniciar para nueva meta
-            self.session_manager.reset_session()
-            logger.info("[RUNNER] Nueva sesión iniciada tras alcanzar meta previa. Reiniciando baseline de ganancias.")
+        # 0. Verificación de Deadline Autopilot Fin de Semana (Domingo 23:59:59)
+        if getattr(self.session_manager, "weekend_autopilot", False) and self.session_manager.is_weekend_finished():
+            if self.is_running:
+                self.is_running = False
+                logger.info("[AUTOPILOT] 🏁 Fin de semana completado (Domingo 23:59:59). Deteniendo bot y enviando reporte maestro.")
+                await self._send_weekend_autopilot_final_report()
+            return
 
-        # 0.1 Verificación de Ciclo Horario (1 hora operando / 1 hora de descanso)
-        can_trade_cycle, cycle_reason = self.session_manager.check_hourly_cycle()
+        # 0.1 Verificación de Ciclo y Reposo entre Secciones (Descanso de 50 min entre tandas)
+        can_trade_cycle, cycle_reason, just_resumed = self.session_manager.check_cycle_status()
+        if just_resumed:
+            await self._send_section_resumed_notification()
+
         if not can_trade_cycle:
             if self._tick_count % 30 == 0:
                 logger.info(f"[RUNNER] {cycle_reason}")
@@ -783,66 +796,79 @@ class BotRunner:
                         current_equity=self.equity
                     )
 
-                    # Si se alcanzó la meta o el límite de la sesión, auto-apagado protector
+                    # Si se alcanzó la meta o el límite de la sesión:
                     if session_res.get("just_reached"):
-                        self.is_running = False
                         t_reason = session_res.get("target_reason", "")
-                        if t_reason == "SESSION_LIMIT_7_REACHED":
-                            target_msg = self.admin_handler.handle_session_trades_completed_report(
-                                wins=session_res.get("wins", 0),
-                                losses=session_res.get("losses", 0),
-                                pnl_usd=float(session_res.get("session_profit", 0.0)),
-                                pnl_pct=float(session_res.get("session_profit_pct", 0.0)),
-                                current_equity=float(self.equity),
-                                total_sample_trades=total_ft
-                            )
-                        elif t_reason == "STOP_LOSS_SESION":
-                            self.risk_manager.is_daily_drawdown_locked = True
-                            target_msg = (
-                                f"🛡️ <b>FRENO DE SEGURIDAD ACTIVADO (STOP LOSS DE SESIÓN -3.0%)</b> 🛡️\n"
-                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                                f"📉 <b>Pérdida en la Sesión:</b> <b>${session_res.get('session_profit', 0):,.2f} USD ({session_res.get('session_profit_pct', 0):.2f}%)</b>\n"
-                                f"💰 <b>Saldo Protegido:</b> <b>${self.equity:,.2f} USD</b>\n"
-                                f"📊 <b>Operaciones:</b> {session_res.get('trades_count', 0)} "
-                                f"({session_res.get('wins', 0)} Ganadas / {session_res.get('losses', 0)} Perdidas)\n"
-                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                                f"🛑 <b>DISCIPLINA DE CAPITAL:</b> El bot se ha apagado automáticamente para blindar tu saldo.\n"
-                                f"🔒 <b>CANDADO DE RIESGO:</b> Nuevas entradas quedan estrictamente bloqueadas durante el resto del día.\n"
-                                f"🌅 <i>Se reactivará automáticamente mañana a las <b>07:00 AM</b> con la nueva jornada bancaria.</i>"
-                            )
-                        elif t_reason == "META_10K_ALCANZADA":
-                            target_msg = (
-                                f"🎉🏆 <b>¡MISIÓN CUMPLIDA! SALDO SUPERÓ LOS $10,000 USD</b> 🏆🎉\n"
-                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                                f"💰 <b>Saldo Final:</b> <b>${self.equity:,.2f} USD</b> 💵\n"
-                                f"🧠 <b>Fase de Entrenamiento Completada con Éxito.</b>\n"
-                                f"📊 <b>Operaciones Totales:</b> {session_res.get('trades_count', 0)} "
-                                f"({session_res.get('wins', 0)} Ganadas / {session_res.get('losses', 0)} Perdidas)\n"
-                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                                f"<i>El bot ha detenido la maratón en la cima. ¡Excelente resultado!</i>"
-                            )
+
+                        if getattr(self.session_manager, "weekend_autopilot", False):
+                            # Modo Autopilot Fin de Semana: Enfriamiento de 50 min (o 90 min si fue SL) y continuar
+                            rest_mins = 90 if t_reason == "STOP_LOSS_SESION" else 50
+                            rest_info = self.session_manager.start_section_rest(rest_minutes=rest_mins, reason=t_reason)
+                            target_msg = self._format_section_rest_message(rest_info, t_reason)
+                            if client and target_chat:
+                                try:
+                                    keyboard = self.admin_handler.get_main_menu_keyboard()
+                                    await client.send_message(target_chat, target_msg, reply_markup=keyboard)
+                                except Exception as tg_err:
+                                    logger.error(f"[AUTOPILOT] Error enviando reporte de descanso a Telegram: {tg_err}")
                         else:
-                            t_pct = session_res.get("target_pct", Decimal("3.0"))
-                            s_profit = session_res.get("session_profit", Decimal("0"))
-                            s_pct = session_res.get("session_profit_pct", Decimal("0"))
-                            target_msg = (
-                                f"🎉🏆 <b>¡META DE GANANCIA DE SESIÓN ALCANZADA!</b> 🏆🎉\n"
-                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                                f"🎯 <b>Meta Cumplida:</b> <b>+{t_pct:.1f}%</b>\n"
-                                f"💰 <b>Ganancia Asegurada:</b> <b>+${s_profit:,.2f} USD (+{s_pct:.2f}%)</b> 💵\n"
-                                f"📈 <b>Saldo Final en Cuenta:</b> <b>${self.equity:,.2f} USD</b>\n"
-                                f"📊 <b>Operaciones Realizadas:</b> {session_res.get('trades_count', 0)} "
-                                f"({session_res.get('wins', 0)} Ganadas / {session_res.get('losses', 0)} Perdidas)\n"
-                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                                f"🛡️ <b>DISCIPLINA DE ORO:</b> El bot se ha apagado automáticamente para blindar tus beneficios.\n\n"
-                                f"<i>¡Felicidades por la sesión ganadora! Pulsa ▶️ Iniciar Trading para otra ronda.</i>"
-                            )
-                        if client and target_chat:
-                            try:
-                                keyboard = self.admin_handler.get_main_menu_keyboard()
-                                await client.send_message(target_chat, target_msg, reply_markup=keyboard)
-                            except Exception as tg_err:
-                                logger.error(f"[SESSION MANAGER] Error enviando alerta de meta a Telegram: {tg_err}")
+                            self.is_running = False
+                            if t_reason == "SESSION_LIMIT_7_REACHED":
+                                target_msg = self.admin_handler.handle_session_trades_completed_report(
+                                    wins=session_res.get("wins", 0),
+                                    losses=session_res.get("losses", 0),
+                                    pnl_usd=float(session_res.get("session_profit", 0.0)),
+                                    pnl_pct=float(session_res.get("session_profit_pct", 0.0)),
+                                    current_equity=float(self.equity),
+                                    total_sample_trades=total_ft
+                                )
+                            elif t_reason == "STOP_LOSS_SESION":
+                                self.risk_manager.is_daily_drawdown_locked = True
+                                target_msg = (
+                                    f"🛡️ <b>FRENO DE SEGURIDAD ACTIVADO (STOP LOSS DE SESIÓN -3.0%)</b> 🛡️\n"
+                                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                                    f"📉 <b>Pérdida en la Sesión:</b> <b>${session_res.get('session_profit', 0):,.2f} USD ({session_res.get('session_profit_pct', 0):.2f}%)</b>\n"
+                                    f"💰 <b>Saldo Protegido:</b> <b>${self.equity:,.2f} USD</b>\n"
+                                    f"📊 <b>Operaciones:</b> {session_res.get('trades_count', 0)} "
+                                    f"({session_res.get('wins', 0)} Ganadas / {session_res.get('losses', 0)} Perdidas)\n"
+                                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                                    f"🛑 <b>DISCIPLINA DE CAPITAL:</b> El bot se ha apagado automáticamente para blindar tu saldo.\n"
+                                    f"🔒 <b>CANDADO DE RIESGO:</b> Nuevas entradas quedan estrictamente bloqueadas durante el resto del día.\n"
+                                    f"🌅 <i>Se reactivará automáticamente mañana a las <b>07:00 AM</b> con la nueva jornada bancaria.</i>"
+                                )
+                            elif t_reason == "META_10K_ALCANZADA":
+                                target_msg = (
+                                    f"🎉🏆 <b>¡MISIÓN CUMPLIDA! SALDO SUPERÓ LOS $10,000 USD</b> 🏆🎉\n"
+                                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                                    f"💰 <b>Saldo Final:</b> <b>${self.equity:,.2f} USD</b> 💵\n"
+                                    f"🧠 <b>Fase de Entrenamiento Completada con Éxito.</b>\n"
+                                    f"📊 <b>Operaciones Totales:</b> {session_res.get('trades_count', 0)} "
+                                    f"({session_res.get('wins', 0)} Ganadas / {session_res.get('losses', 0)} Perdidas)\n"
+                                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                                    f"<i>El bot ha detenido la maratón en la cima. ¡Excelente resultado!</i>"
+                                )
+                            else:
+                                t_pct = session_res.get("target_pct", Decimal("3.0"))
+                                s_profit = session_res.get("session_profit", Decimal("0"))
+                                s_pct = session_res.get("session_profit_pct", Decimal("0"))
+                                target_msg = (
+                                    f"🎉🏆 <b>¡META DE GANANCIA DE SESIÓN ALCANZADA!</b> 🏆🎉\n"
+                                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                                    f"🎯 <b>Meta Cumplida:</b> <b>+{t_pct:.1f}%</b>\n"
+                                    f"💰 <b>Ganancia Asegurada:</b> <b>+${s_profit:,.2f} USD (+{s_pct:.2f}%)</b> 💵\n"
+                                    f"📈 <b>Saldo Final en Cuenta:</b> <b>${self.equity:,.2f} USD</b>\n"
+                                    f"📊 <b>Operaciones Realizadas:</b> {session_res.get('trades_count', 0)} "
+                                    f"({session_res.get('wins', 0)} Ganadas / {session_res.get('losses', 0)} Perdidas)\n"
+                                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                                    f"🛡️ <b>DISCIPLINA DE ORO:</b> El bot se ha apagado automáticamente para blindar tus beneficios.\n\n"
+                                    f"<i>¡Felicidades por la sesión ganadora! Pulsa ▶️ Iniciar Trading para otra ronda.</i>"
+                                )
+                            if client and target_chat:
+                                try:
+                                    keyboard = self.admin_handler.get_main_menu_keyboard()
+                                    await client.send_message(target_chat, target_msg, reply_markup=keyboard)
+                                except Exception as tg_err:
+                                    logger.error(f"[SESSION MANAGER] Error enviando alerta de meta a Telegram: {tg_err}")
 
                     # Broadcast a WebSocket (Dashboard)
                     await ws_hub.broadcast("TRADE_CLOSED", trade_record)
@@ -1194,10 +1220,12 @@ class BotRunner:
             action_status = "⏸️ Bot pausado"
             action_detail = "Esperando que inicies el bot para comenzar a buscar operaciones."
             action_badge = "PAUSADO"
-        elif self.session_manager.hourly_cycle_enabled and self.session_manager.cycle_state == "RESTING":
+        elif self.session_manager.cycle_state == "RESTING":
             prog = self.session_manager.get_progress_data()
-            action_status = f"⏱️ Enfriamiento de 1 hora ({prog.get('cycle_remaining_min', 0)} min restantes)"
-            action_detail = "El bot descansa 60 min para enfriar el mercado. Puedes tocar '⏱️ Modo Horas' para operar de inmediato."
+            sec_num = prog.get("completed_sections_count", 0)
+            rem_min = prog.get("cycle_remaining_min", 0)
+            action_status = f"⏱️ Reposo entre secciones ({rem_min} min restantes)"
+            action_detail = f"Tanda #{sec_num} finalizada. El bot descansa {rem_min} min para enfriar el mercado antes de la próxima tanda autónoma."
             action_badge = "EN REPOSO"
         elif self.circuit_breaker.status != CircuitBreakerStatus.NORMAL:
             action_status = "⚠️ Freno de emergencia activado"
@@ -1302,6 +1330,133 @@ class BotRunner:
             "ai_thoughts": self.strategy.get_latest_thoughts() if hasattr(self.strategy, "get_latest_thoughts") else {},
             "equity_curve": self.equity_curve[-30:],
         }
+
+    def _format_section_rest_message(self, info: Dict[str, Any], reason: str) -> str:
+        """Formats an executive section completion notification for Telegram."""
+        sec_num = info.get("section_number", 1)
+        trades = info.get("section_trades", 7)
+        wins = info.get("section_wins", 0)
+        losses = info.get("section_losses", 0)
+        pnl = info.get("section_profit", Decimal("0"))
+        pnl_pct = info.get("section_profit_pct", Decimal("0"))
+        equity = info.get("current_equity", Decimal("0"))
+        tot_trades = info.get("total_weekend_trades", trades)
+        tot_wins = info.get("total_weekend_wins", wins)
+        tot_losses = info.get("total_weekend_losses", losses)
+        tot_profit = info.get("total_weekend_profit", pnl)
+        rest_min = info.get("rest_minutes", 50)
+        resume_str = info.get("resume_time_str", "")
+
+        sign = "+" if pnl >= 0 else ""
+        tot_sign = "+" if tot_profit >= 0 else ""
+        tot_wr = round((tot_wins / tot_trades * 100), 1) if tot_trades > 0 else 0.0
+
+        if reason == "STOP_LOSS_SESION":
+            title = f"🛡️ <b>PAUSA DE SEGURIDAD - SECCIÓN #{sec_num} ({trades} OPS)</b>"
+            note = "Freno preventivo activado. Enfriamiento extendido para proteger capital."
+        elif reason == "TARGET_PERCENT_REACHED":
+            title = f"🎯 <b>¡META DE GANANCIA ALCANZADA! - SECCIÓN #{sec_num}</b>"
+            note = "Objetivo de rentabilidad asegurado con éxito."
+        else:
+            title = f"🏁 <b>SECCIÓN #{sec_num} COMPLETADA ({trades}/7 OPERACIONES)</b>"
+            note = "Tanda de operaciones completada con disciplina algorítmica."
+
+        return (
+            f"{title}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 <b>Resumen de la Tanda #{sec_num}:</b>\n"
+            f"• Acierto: <b>{wins} Ganadas / {losses} Perdidas</b>\n"
+            f"• Beneficio Tanda: <b>{sign}${pnl:,.2f} USD</b> ({sign}{pnl_pct:.2f}%)\n"
+            f"• Saldo en Cuenta: <b>${equity:,.2f} USD</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📈 <b>Acumulado Fin de Semana:</b>\n"
+            f"• Total Operaciones: <b>{tot_trades}</b> ({tot_wins}W - {tot_losses}L | <b>{tot_wr}% Win Rate</b>)\n"
+            f"• Beneficio Acumulado: <b>{tot_sign}${tot_profit:,.2f} USD</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"⏱️ <b>ENFRIAMIENTO ESTRATÉGICO ({rest_min} MINUTOS)</b>\n"
+            f"🛡️ <i>{note} Reposo para no sobreoperar y dejar enfriar el mercado.</i>\n\n"
+            f"🔄 <b>PRÓXIMA SECCIÓN:</b> Iniciará automáticamente a las <b>{resume_str}</b>.\n"
+            f"<i>Autopilot Fin de Semana activo 24/7 hasta el Domingo 23:59. Cero intervención manual requerida.</i>"
+        )
+
+    async def _send_section_resumed_notification(self) -> None:
+        """Sends an announcement to Telegram that a new autonomous section has started."""
+        from app.telegram.telegram_client import get_telegram_client
+        client = get_telegram_client()
+        target_chat = settings.TELEGRAM_ADMIN_CHAT_ID or settings.TELEGRAM_CHANNEL_ID
+        if not client or not target_chat:
+            return
+
+        sec_num = self.session_manager.completed_sections_count + 1
+        msg = (
+            f"🚀 <b>INICIANDO SECCIÓN DE TRADING #{sec_num}</b> 🚀\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🧠 <b>Estrategia Activa:</b> Retrocesos de Fibonacci (Golden Pocket 61.8% / 50% / 78.6%)\n"
+            f"🎯 <b>Objetivo de la Tanda:</b> Hasta 7 operaciones sniper de $55.00 USD\n"
+            f"💰 <b>Saldo Base:</b> <b>${self.equity:,.2f} USD</b>\n"
+            f"🔍 <b>Mercados en Escaneo:</b> 11 Pares OTC con filtro de mecha de confirmación\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"<i>Buscando el primer gatillo de alta probabilidad...</i>"
+        )
+        try:
+            keyboard = self.admin_handler.get_main_menu_keyboard()
+            await client.send_message(target_chat, msg, reply_markup=keyboard)
+            logger.info(f"[AUTOPILOT] Sent section #{sec_num} resume notification to Telegram.")
+        except Exception as e:
+            logger.debug(f"[AUTOPILOT] Error sending resume alert: {e}")
+
+    async def _send_weekend_autopilot_final_report(self) -> None:
+        """Sends the final comprehensive report when Sunday 23:59:59 arrives."""
+        from app.telegram.telegram_client import get_telegram_client
+        client = get_telegram_client()
+        target_chat = settings.TELEGRAM_ADMIN_CHAT_ID or settings.TELEGRAM_CHANNEL_ID
+
+        tot_trades = self.session_manager.total_weekend_trades
+        tot_wins = self.session_manager.total_weekend_wins
+        tot_losses = self.session_manager.total_weekend_losses
+        tot_pnl = self.session_manager.total_weekend_net_profit
+        start_eq = self.session_manager.weekend_start_equity or self.initial_equity
+        final_eq = self.equity
+        roi_pct = ((final_eq - start_eq) / start_eq * Decimal("100")) if start_eq > 0 else Decimal("0")
+        wr = (tot_wins / tot_trades * 100) if tot_trades > 0 else 0.0
+        sections = self.session_manager.completed_sections_count
+
+        sign = "+" if tot_pnl >= 0 else ""
+        roi_sign = "+" if roi_pct >= 0 else ""
+
+        report_msg = (
+            f"🏁🏆 <b>REPORTE FINAL: AUTOPILOT FIN DE SEMANA CONCLUIDO</b> 🏆🏁\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📅 <b>Periodo:</b> Viernes 09/10/2026 - Domingo 11/10/2026 23:59\n"
+            f"🧠 <b>Estrategia Evaluada:</b> Fibonacci Retracement Golden Pocket (0.618 / 0.50 / 0.786)\n"
+            f"💰 <b>Inversión Fija:</b> $55.00 USD por operación (Cero Martingala)\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 <b>ESTADÍSTICAS GLOBALES:</b>\n"
+            f"• Secciones Ejecutadas: <b>{sections} tandas</b>\n"
+            f"• Operaciones Totales: <b>{tot_trades}</b>\n"
+            f"• Ganadas: <b>{tot_wins}</b> | Perdidas: <b>{tot_losses}</b>\n"
+            f"• <b>Tasa de Acierto (Win Rate):</b> <b>{wr:.1f}%</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"💵 <b>RENDIMIENTO FINANCIERO:</b>\n"
+            f"• Saldo Inicial: <b>${start_eq:,.2f} USD</b>\n"
+            f"• Saldo Final: <b>${final_eq:,.2f} USD</b>\n"
+            f"• <b>Ganancia Neta Total:</b> <b>{sign}${tot_pnl:,.2f} USD</b>\n"
+            f"• <b>Rentabilidad (ROI):</b> <b>{roi_sign}{roi_pct:.2f}%</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📌 <b>PLAN PARA EL LUNES (MERCADO REAL BANCARIO):</b>\n"
+            f"1. A las 07:00 AM abren los mercados interbancarios de Londres y Nueva York.\n"
+            f"2. Con el bot afinado en estas sesiones, el lunes evaluaremos los mejores pares y fijaremos la meta diaria del 3% al 5%.\n"
+            f"3. El bot queda en STANDBY seguro esperando tus instrucciones.\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"<i>¡Gran trabajo durante el fin de semana! Nos vemos el lunes para revisar los resultados detallados.</i>"
+        )
+        if client and target_chat:
+            try:
+                keyboard = self.admin_handler.get_main_menu_keyboard()
+                await client.send_message(target_chat, report_msg, reply_markup=keyboard)
+                logger.info("[AUTOPILOT] Sent weekend final master report to Telegram.")
+            except Exception as e:
+                logger.error(f"[AUTOPILOT] Error sending weekend final report: {e}")
 
 
 bot_runner = BotRunner()

@@ -148,16 +148,17 @@ async def upsert_position(
     result = await session.execute(
         select(PositionModel).where(
             PositionModel.symbol == symbol,
-            PositionModel.is_open == True,  # noqa: E712
         )
     )
     existing = result.scalar_one_or_none()
 
     if existing:
+        existing.is_open = True
         existing.amount = amount
         existing.entry_price = entry_price
         existing.stop_loss = stop_loss
         existing.take_profit = take_profit
+        existing.mode = mode
         logger.info(f"[DB] Position updated: {symbol} | {amount} @ {entry_price}")
         return existing
     else:

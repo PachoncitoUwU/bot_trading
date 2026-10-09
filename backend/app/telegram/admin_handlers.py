@@ -385,22 +385,41 @@ class TelegramAdminHandler:
         else:
             cycle_str = "🔄 Continuo 24/7 (Sin pausas por hora)"
 
+        weekend_section = ""
+        if progress.get("weekend_autopilot"):
+            tot_w_trades = progress.get("total_weekend_trades", 0)
+            tot_w_wins = progress.get("total_weekend_wins", 0)
+            tot_w_losses = progress.get("total_weekend_losses", 0)
+            tot_w_profit = progress.get("total_weekend_profit", Decimal("0"))
+            sections_done = progress.get("completed_sections_count", 0)
+            w_sign = "+" if tot_w_profit >= 0 else ""
+            w_wr = round((tot_w_wins / tot_w_trades * 100), 1) if tot_w_trades > 0 else 0.0
+            weekend_section = (
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🚀 <b>Autopilot Fin de Semana:</b>\n"
+                f"• Tandas completadas: <b>{sections_done}</b>\n"
+                f"• Total Ops: <b>{tot_w_trades}</b> ({tot_w_wins}W - {tot_w_losses}L | <b>{w_wr}% WR</b>)\n"
+                f"• Beneficio Acumulado: <b>{w_sign}${tot_w_profit:,.2f} USD</b>\n"
+                f"• Cierre programado: <b>Domingo 11/10 23:59</b>\n"
+            )
+
         return (
             "🎯 <b>META DE GANANCIA Y PROGRESO DE SESIÓN</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"🏦 <b>Régimen:</b> <code>{regime_label}</code>\n"
             f"🎯 <b>Meta de Ganancia:</b> <b>+{t_pct:.1f}% (+${target_amount:,.2f} USD)</b>\n"
-            f"💵 <b>Ganancia Hoy:</b> <b>{sign}${net_profit:,.2f} USD ({sign}{p_pct:.2f}%)</b>\n\n"
+            f"💵 <b>Ganancia Tanda:</b> <b>{sign}${net_profit:,.2f} USD ({sign}{p_pct:.2f}%)</b>\n\n"
             f"<b>Progreso hacia el objetivo:</b>\n"
             f"[{bar}] <b>{completion}%</b>\n"
             f"⏳ <b>Falta para completar:</b> ${rem_profit:,.2f} USD\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"⏱️ <b>Ciclo Horario:</b> {cycle_str}\n"
-            f"📊 <b>Operaciones Hoy:</b> {trades} ({wins}W / {losses}L - {win_rate}% Win Rate)\n"
+            f"📊 <b>Operaciones Tanda:</b> {trades} ({wins}W / {losses}L - {win_rate}% Win Rate)\n"
             f"💰 <b>Saldo en Cuenta:</b> ${curr_eq:,.2f} USD\n"
+            f"{weekend_section}"
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"{status_line}\n"
-            "<i>Al llegar al 100% de la meta, el bot se apaga solo para proteger tu dinero.</i>"
+            "<i>Modo por secciones autónomas: opera hasta 7 trades y descansa 50 min.</i>"
         )
 
     def handle_toggle_hourly_cycle(self, session_manager) -> str:
