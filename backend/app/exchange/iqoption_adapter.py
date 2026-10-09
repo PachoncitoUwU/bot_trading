@@ -20,18 +20,29 @@ except ImportError:
     HAS_IQOPTION = False
 
 
+OFFICIAL_OTC_ACTIVE_IDS = {
+    "EURUSD-OTC": 76,
+    "EURGBP-OTC": 77,
+    "USDCHF-OTC": 78,
+    "EURJPY-OTC": 79,
+    "NZDUSD-OTC": 80,
+    "GBPUSD-OTC": 81,
+    "GBPJPY-OTC": 84,
+    "USDJPY-OTC": 85,
+    "AUDCAD-OTC": 86,
+}
+
 MODERN_ACTIVE_IDS = {
-    "EURUSD": 1861, "EURUSD-OP": 1861, "EURUSD-OTC": 1861,
-    "GBPUSD": 1867, "GBPUSD-OP": 1867, "GBPUSD-OTC": 1867,
-    "EURGBP": 1862, "EURGBP-OP": 1862, "EURGBP-OTC": 1862,
-    "EURJPY": 1864, "EURJPY-OP": 1864, "EURJPY-OTC": 1864,
-    "USDJPY": 1865, "USDJPY-OP": 1865, "USDJPY-OTC": 1865,
-    "GBPJPY": 1866, "GBPJPY-OP": 1866, "GBPJPY-OTC": 1866,
-    "NZDUSD": 1896, "NZDUSD-OP": 1896, "NZDUSD-OTC": 1896,
-    "GBPCAD": 1897, "GBPCAD-OP": 1897, "GBPCAD-OTC": 1897,
-    "USDCAD": 1878, "USDCAD-OP": 1878, "USDCAD-OTC": 1878,
-    "USDCHF": 78, "USDCHF-OP": 78, "USDCHF-OTC": 78,
-    "AUDCAD": 86, "AUDCAD-OP": 86, "AUDCAD-OTC": 86,
+    "EURUSD": 1, "EURUSD-OP": 1,
+    "GBPUSD": 2, "GBPUSD-OP": 2,
+    "EURGBP": 3, "EURGBP-OP": 3,
+    "EURJPY": 4, "EURJPY-OP": 4,
+    "USDJPY": 5, "USDJPY-OP": 5,
+    "GBPJPY": 6, "GBPJPY-OP": 6,
+    "USDCHF": 7, "USDCHF-OP": 7,
+    "NZDUSD": 8, "NZDUSD-OP": 8,
+    "USDCAD": 9, "USDCAD-OP": 9,
+    "AUDCAD": 10, "AUDCAD-OP": 10,
 }
 
 
@@ -77,29 +88,18 @@ class IQOptionAdapter:
             self.client = await asyncio.to_thread(_connect)
             self.is_initialized = True
             
-            # Map modern active IDs (1860+ series) into OP_code.ACTIVES
+            # Map official OTC IDs and standard pairs into OP_code.ACTIVES
             import iqoptionapi.constants as OP_code
-            MODERN_ACTIVE_IDS = {
-                "EURUSD": 1861, "EURUSD-OP": 1861, "EURUSD-OTC": 1861,
-                "GBPUSD": 1867, "GBPUSD-OP": 1867, "GBPUSD-OTC": 1867,
-                "EURGBP": 1862, "EURGBP-OP": 1862, "EURGBP-OTC": 1862,
-                "EURJPY": 1864, "EURJPY-OP": 1864, "EURJPY-OTC": 1864,
-                "USDJPY": 1865, "USDJPY-OP": 1865, "USDJPY-OTC": 1865,
-                "GBPJPY": 1866, "GBPJPY-OP": 1866, "GBPJPY-OTC": 1866,
-                "NZDUSD": 1896, "NZDUSD-OP": 1896, "NZDUSD-OTC": 1896,
-                "GBPCAD": 1897, "GBPCAD-OP": 1897, "GBPCAD-OTC": 1897,
-                "USDCAD": 1878, "USDCAD-OP": 1878, "USDCAD-OTC": 1878,
-                "USDCHF": 78, "USDCHF-OP": 78, "USDCHF-OTC": 78,
-                "AUDCAD": 86, "AUDCAD-OP": 86, "AUDCAD-OTC": 86,
-            }
-            for k, v in MODERN_ACTIVE_IDS.items():
+            for k, v in OFFICIAL_OTC_ACTIVE_IDS.items():
                 OP_code.ACTIVES[k] = v
-                OP_code.ACTIVES[k.lower()] = v
                 OP_code.ACTIVES[k.upper()] = v
-                clean = k.replace("-OP", "").replace("-op", "").replace("-OTC", "").replace("-otc", "").upper()
-                OP_code.ACTIVES[clean] = v
-                OP_code.ACTIVES[f"{clean}-op"] = v
-                OP_code.ACTIVES[f"{clean}-OTC"] = v
+                OP_code.ACTIVES[k.lower()] = v
+
+            for k, v in MODERN_ACTIVE_IDS.items():
+                if "-OTC" not in k.upper():
+                    OP_code.ACTIVES[k] = v
+                    OP_code.ACTIVES[k.upper()] = v
+                    OP_code.ACTIVES[k.lower()] = v
 
             bal = self.client.get_balance()
             logger.info(f"[IQOPTION] Successfully connected! Balance ({self.balance_type}): ${bal:,.2f}")
@@ -211,9 +211,9 @@ class IQOptionAdapter:
             instrument_type = "BINARY"
             base_clean = active.replace("-OTC", "").replace("-otc", "").replace("-OP", "").replace("-op", "")
             if "-OTC" in active.upper():
-                candidates = [active, f"{base_clean}-OTC", f"{base_clean}-op", base_clean]
+                candidates = [f"{base_clean}-OTC", active]
             else:
-                candidates = [f"{base_clean}-op", active, base_clean, f"{base_clean}-OTC"]
+                candidates = [f"{base_clean}-op", active, base_clean]
             
             # Deduplicate preserving order
             unique_candidates = []
@@ -226,11 +226,13 @@ class IQOptionAdapter:
 
             import iqoptionapi.constants as OP_code
             for cand in unique_candidates:
-                clean_k = cand.replace("-op", "").replace("-OP", "").replace("-OTC", "").replace("-otc", "").upper()
-                if clean_k in MODERN_ACTIVE_IDS:
-                    OP_code.ACTIVES[cand] = MODERN_ACTIVE_IDS[clean_k]
-                elif clean_k in OP_code.ACTIVES:
-                    OP_code.ACTIVES[cand] = OP_code.ACTIVES[clean_k]
+                cand_upper = cand.upper()
+                if cand_upper in OFFICIAL_OTC_ACTIVE_IDS:
+                    OP_code.ACTIVES[cand] = OFFICIAL_OTC_ACTIVE_IDS[cand_upper]
+                    OP_code.ACTIVES[cand_upper] = OFFICIAL_OTC_ACTIVE_IDS[cand_upper]
+                elif cand_upper in MODERN_ACTIVE_IDS:
+                    OP_code.ACTIVES[cand] = MODERN_ACTIVE_IDS[cand_upper]
+                    OP_code.ACTIVES[cand_upper] = MODERN_ACTIVE_IDS[cand_upper]
                 elif cand not in OP_code.ACTIVES:
                     continue
 
