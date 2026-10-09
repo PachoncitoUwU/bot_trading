@@ -4,15 +4,15 @@
   "start_time": "2026-09-21T15:28:00.000000",
   "target_trades": 300,
   "checkpoint_trades": 50,
-  "total_trades": 19,
+  "total_trades": 25,
   "wins": 10,
-  "losses": 9,
-  "net_pnl": 78.5,
+  "losses": 15,
+  "net_pnl": -251.5,
   "starting_balance": 9230.31,
-  "current_balance": 9378.34,
-  "peak_balance": 9388.24,
-  "max_drawdown_usd": 116.8,
-  "max_drawdown_pct": 1.27,
+  "current_balance": 8983.44,
+  "peak_balance": 9423.44,
+  "max_drawdown_usd": 440.0,
+  "max_drawdown_pct": 4.67,
   "patterns": {
     "Estrella Fugaz / Pinbar Bajista": {
       "wins": 3,
@@ -40,15 +40,21 @@
     },
     "FIB_CALL_FIB_618": {
       "wins": 4,
-      "losses": 1,
-      "net_pnl": 130.9,
-      "win_rate": 80.0
+      "losses": 4,
+      "net_pnl": -34.1,
+      "win_rate": 50.0
     },
     "FIB_PUT_FIB_618": {
       "wins": 1,
-      "losses": 0,
-      "net_pnl": 45.1,
-      "win_rate": 100.0
+      "losses": 1,
+      "net_pnl": -9.9,
+      "win_rate": 50.0
+    },
+    "FIB_CALL_FIB_500": {
+      "wins": 0,
+      "losses": 2,
+      "net_pnl": -110.0,
+      "win_rate": 0.0
     }
   },
   "trades": [
@@ -317,6 +323,90 @@
       "is_win": true,
       "profit": 45.099999999999994,
       "balance": 9378.34
+    },
+    {
+      "num": 20,
+      "order_id": "14339461677",
+      "time": "2026-10-09 19:15:01 UTC",
+      "symbol": "USDCHF-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "FIB_CALL_FIB_500",
+      "side": "CALL",
+      "stake": 55.0,
+      "is_win": false,
+      "profit": -55.0,
+      "balance": 9423.44
+    },
+    {
+      "num": 21,
+      "order_id": "14339466660",
+      "time": "2026-10-09 19:17:01 UTC",
+      "symbol": "AUDCAD-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "FIB_PUT_FIB_618",
+      "side": "PUT",
+      "stake": 55.0,
+      "is_win": false,
+      "profit": -55.0,
+      "balance": 9313.44
+    },
+    {
+      "num": 22,
+      "order_id": "14339470898",
+      "time": "2026-10-09 19:18:30 UTC",
+      "symbol": "USDCHF-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "FIB_CALL_FIB_618",
+      "side": "CALL",
+      "stake": 55.0,
+      "is_win": false,
+      "profit": -55.0,
+      "balance": 9148.44
+    },
+    {
+      "num": 23,
+      "order_id": "14339474149",
+      "time": "2026-10-09 19:19:59 UTC",
+      "symbol": "AUDCAD-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "FIB_CALL_FIB_500",
+      "side": "CALL",
+      "stake": 55.0,
+      "is_win": false,
+      "profit": -55.0,
+      "balance": 9093.44
+    },
+    {
+      "num": 24,
+      "order_id": "14339478197",
+      "time": "2026-10-09 19:21:29 UTC",
+      "symbol": "USDCHF-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "FIB_CALL_FIB_618",
+      "side": "CALL",
+      "stake": 55.0,
+      "is_win": false,
+      "profit": -55.0,
+      "balance": 9038.44
+    },
+    {
+      "num": 25,
+      "order_id": "14339483195",
+      "time": "2026-10-09 19:23:29 UTC",
+      "symbol": "USDCHF-OTC",
+      "regime": "OTC",
+      "instrument": "BINARY",
+      "pattern": "FIB_CALL_FIB_618",
+      "side": "CALL",
+      "stake": 55.0,
+      "is_win": false,
+      "profit": -55.0,
+      "balance": 8983.44
     }
   ],
   "archives": [

@@ -26,12 +26,13 @@ from app.telegram.telegram_client import init_telegram_client, get_telegram_clie
 
 async def main():
     logger.info("================================================================================")
-    logger.info("  🚀 AUTOPILOT FIN DE SEMANA INICIADO (VIERNES A DOMINGO 23:59:59) 🚀")
+    logger.info("  🚀 AUTOPILOT FIN DE SEMANA INICIADO (MODO SNIPER ULTRA-PRECISO) 🚀")
     logger.info("================================================================================")
     logger.info("  • Estrategia: Fibonacci Retracement (Golden Pocket 61.8% / 50% / 78.6%)")
-    logger.info("  • Modalidad: Tandas de 7 operaciones con descansos de 50 minutos entre secciones")
+    logger.info("  • Modalidad: Tandas cortas de máx 4 operaciones (o freno de 2 pérdidas) + Pausa 50 min")
+    logger.info("  • Cadencia: Modo Francotirador (1 sola operación a la vez + 3 min de pausa obligatoria)")
     logger.info("  • Inversión: $55.00 USD fija por operación (Cero Martingala)")
-    logger.info("  • Mercados: 11 Pares OTC con filtro de mecha de rechazo")
+    logger.info("  • Mercados: 5 Pares OTC comprobados de alta precisión (EURUSD, GBPUSD, EURJPY, GBPJPY, NZDUSD)")
     logger.info("  • Cierre: Domingo 11 de Octubre a las 23:59:59 automático")
     logger.info("================================================================================")
 
@@ -53,20 +54,21 @@ async def main():
     target_chat = settings.TELEGRAM_ADMIN_CHAT_ID or settings.TELEGRAM_CHANNEL_ID
     if tg_client and target_chat:
         start_announcement = (
-            "🤖 <b>AUTOPILOT FIN DE SEMANA ACTIVADO</b> 🤖\n"
+            "🎯 <b>AUTOPILOT FIN DE SEMANA (MODO FRANCOTIRADOR)</b> 🎯\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "📅 <b>Duración:</b> Viernes hasta Domingo 23:59:59 (100% Autónomo)\n"
-            "🧠 <b>Estrategia:</b> Fibonacci Golden Pocket (0.618 / 0.50 / 0.786)\n"
-            "💵 <b>Inversión:</b> $55.00 USD por operación (Fija / Sin doblar)\n"
-            "🔄 <b>Modalidad por Tandas:</b>\n"
-            "• Opera hasta <b>7 operaciones</b> por sección.\n"
-            "• Al terminar cada tanda, toma un <b>reposo de 50 minutos</b> para enfriar el mercado.\n"
-            "• Reanuda la siguiente tanda sola sin intervención manual.\n"
+            "📅 <b>Duración:</b> Viernes a Domingo 23:59:59 (100% Autónomo)\n"
+            "🧠 <b>Estrategia:</b> Fibonacci Golden Pocket (Confianza ≥ 85%)\n"
+            "💵 <b>Inversión:</b> $55.00 USD fija por operación (Sin martingala)\n"
+            "⏱️ <b>Cadencia Sniper:</b> 1 sola operación a la vez. Mínimo 3 min de pausa entre trades para estudiar el mercado a fondo.\n"
+            "🛡️ <b>Gestión de Riesgo Estricta:</b>\n"
+            "• Máximo <b>4 operaciones</b> por tanda.\n"
+            "• <b>Freno de Seguridad:</b> Si ocurren 2 pérdidas, entra en reposo inmediato de 60 min.\n"
+            "• <b>Toma de Ganancias:</b> Al llegar a 3 victorias, asegura beneficio y descansa.\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 <b>Saldo Inicial:</b> <b>${bot_runner.equity:,.2f} USD</b>\n"
-            "🔍 <b>Mercados:</b> 11 Pares OTC de alta volatilidad\n"
+            f"💰 <b>Saldo Actual:</b> <b>${bot_runner.equity:,.2f} USD</b>\n"
+            "🔍 <b>Mercados:</b> 5 Pares OTC estrella (EURUSD, GBPUSD, EURJPY, GBPJPY, NZDUSD)\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "<i>No tienes que tocar nada en Telegram ni en tu PC. El sistema operará y reportará cada resultado automáticamente.</i>"
+            "<i>Operando de forma selectiva y paciente para proteger el capital.</i>"
         )
         try:
             keyboard = bot_runner.admin_handler.get_main_menu_keyboard()

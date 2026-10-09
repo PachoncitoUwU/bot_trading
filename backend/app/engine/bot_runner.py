@@ -84,6 +84,7 @@ class BotRunner:
             self.set_timeframe(settings.DEFAULT_TIMEFRAME)
         self.max_concurrent_binary_trades: int = 1  # Francotirador: 1 operación a la vez para máxima concentración
         self._pair_cooldowns: Dict[str, float] = {}  # Anti-revancha: cooldown por símbolo
+        self._last_binary_trade_closed_time: float = 0.0  # Cooldown global obligatorio entre operaciones (mínimo 180s)
         self.equity_curve: List[Dict[str, Any]] = [
             {"time": "Inicio", "equity": 10000.0, "pnl": 0.0, "is_win": True}
         ]
@@ -406,10 +407,20 @@ class BotRunner:
                 logger.info("[RUNNER] Francotirador estricto: ya hay 1 operación activa en curso. Bloqueando nueva entrada.")
                 return
 
-            # 1. Enforce pair cooldown
+            # 0.1 Cooldown Global Estricto (Anti-ametralladora / Espaciado Sniper):
+            # Mínimo 3 minutos (180s) de reposo absoluto después de CUALQUIER operación cerrada
+            time_since_last_trade = time.time() - getattr(self, "_last_binary_trade_closed_time", 0.0)
+            if getattr(self, "_last_binary_trade_closed_time", 0.0) > 0 and time_since_last_trade < 180:
+                rem_cooldown = int(180 - time_since_last_trade)
+                if self._tick_count % 12 == 0:
+                    logger.info(f"[RUNNER] Reposo estratégico entre operaciones ({rem_cooldown}s restantes). Analizando con máxima calma.")
+                return
+
+            # 1. Enforce pair cooldown (5 minutos / 300s para el mismo par que acaba de operar)
             remaining_cooldown = self._pair_cooldowns.get(symbol, 0) - time.time()
             if remaining_cooldown > 0:
-                logger.info(f"[RUNNER] Enfriamiento activo para {symbol} ({int(remaining_cooldown)}s restantes). Entrada omitida.")
+                if self._tick_count % 12 == 0:
+                    logger.info(f"[RUNNER] Enfriamiento activo para {symbol} ({int(remaining_cooldown)}s restantes). Entrada omitida.")
                 return
 
             # 2. FILTRO DE CONVICCIÓN EN RECUPERACIÓN (Paso 2):
@@ -629,7 +640,8 @@ class BotRunner:
                     except Exception:
                         pass
                     import time
-                    self._pair_cooldowns[symbol] = time.time() + 45.0  # 45 segundos de enfriamiento ágil
+                    self._pair_cooldowns[symbol] = time.time() + 300.0  # 5 minutos para el mismo par
+                    self._last_binary_trade_closed_time = time.time()   # 3 minutos de reposo global absoluto
 
                     # Alimentar el resultado a la memoria de aprendizaje por refuerzo de la IA
                     if hasattr(self.strategy, "record_trade_outcome"):

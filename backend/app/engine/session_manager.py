@@ -34,7 +34,7 @@ class SessionManager:
         self.current_equity: Decimal = Decimal("10000.00")
         self.session_net_profit: Decimal = Decimal("0.00")
         self.session_closed_trades: int = 0
-        self.session_max_trades: int = 7
+        self.session_max_trades: int = 4
         self.session_wins: int = 0
         self.session_losses: int = 0
         self.daily_sl_locked_date: Optional[str] = None
@@ -224,12 +224,28 @@ class SessionManager:
                     f"(+{profit_pct:.2f}%), Target was: {target_pct}%. Stopping bot to lock profits."
                 )
 
-        # 3. Límite Operativo de Sesión (Máximo 7 operaciones por tanda)
-        if not self.is_target_reached and self.session_closed_trades >= self.session_max_trades:
+        # 2. Freno de seguridad por 2 pérdidas en la sesión (blindaje anti-racha)
+        if not self.is_target_reached and self.session_losses >= 2:
             self.is_target_reached = True
             self.target_reached_at = datetime.now()
             just_reached = True
-            target_reason = "SESSION_LIMIT_7_REACHED"
+            target_reason = "MAX_LOSSES_2_REACHED"
+            logger.warning("[SESSION MANAGER] 🛡️ 2 pérdidas en la tanda. Activando reposo de seguridad preventivo para blindar capital.")
+
+        # 3. Meta de 3 victorias en la tanda (asegurar beneficios rápido)
+        elif not self.is_target_reached and self.session_wins >= 3:
+            self.is_target_reached = True
+            self.target_reached_at = datetime.now()
+            just_reached = True
+            target_reason = "WIN_TARGET_3_REACHED"
+            logger.info(f"[SESSION MANAGER] 🎯 3 operaciones ganadas ({self.session_wins}W - {self.session_losses}L). Asegurando beneficios.")
+
+        # 4. Límite Operativo de Sesión (Máximo 4 operaciones por tanda)
+        elif not self.is_target_reached and self.session_closed_trades >= self.session_max_trades:
+            self.is_target_reached = True
+            self.target_reached_at = datetime.now()
+            just_reached = True
+            target_reason = "SESSION_LIMIT_REACHED"
             logger.info(
                 f"[SESSION MANAGER] 🏁 Límite de sesión alcanzado ({self.session_closed_trades}/{self.session_max_trades} operaciones). "
                 f"Resultado: {self.session_wins}W - {self.session_losses}L | PnL: ${self.session_net_profit:,.2f} ({profit_pct:.2f}%)."

@@ -45,14 +45,14 @@ class FibonacciRetracementStrategy(BaseStrategy):
 
     def __init__(self, symbols: List[str], timeframe: str = "1m", params: Optional[Dict[str, Any]] = None):
         default_params = {
-            "swing_window": 35,           # Cantidad de velas para detectar Swing High y Swing Low
-            "min_impulse_pct": Decimal("0.03"),  # Amplitud mínima del impulso (% del precio, ~3 pips)
-            "tolerance_pct": Decimal("0.06"),    # Tolerancia de proximidad al nivel Fib (en %)
+            "swing_window": 40,           # Cantidad de velas para detectar Swing High y Swing Low limpios
+            "min_impulse_pct": Decimal("0.05"),  # Amplitud mínima del impulso (% del precio, ~5 pips)
+            "tolerance_pct": Decimal("0.04"),    # Tolerancia estricta de proximidad al nivel Fib
             "trend_ema": 30,              # EMA intermedia para dirección de tendencia
             "macro_ema": 100,             # EMA macro institucional
             "rsi_period": 14,             # Periodo de RSI para confluencia
-            "min_confidence": Decimal("0.70"), # Umbral de confianza mínimo para disparar señal
-            "rejection_wick_ratio": Decimal("0.8"), # Ratio de mecha respecto al cuerpo para validar rechazo
+            "min_confidence": Decimal("0.85"), # Umbral estricto de alta convicción (mínimo 85%)
+            "rejection_wick_ratio": Decimal("1.2"), # Mecha de rechazo clara (al menos 1.2x cuerpo)
         }
         if params:
             default_params.update(params)
@@ -240,8 +240,8 @@ class FibonacciRetracementStrategy(BaseStrategy):
                 matched_level_name = None
                 matched_level_price = None
 
-                # Evaluar niveles objetivo: 50%, 61.8% (Golden), 78.6% (Deep), 38.2%
-                target_levels = ["FIB_618", "FIB_500", "FIB_786", "FIB_382"]
+                # Evaluar niveles objetivo: 61.8% (Golden), 50% (Equilibrio), 78.6% (Deep Pocket)
+                target_levels = ["FIB_618", "FIB_500", "FIB_786"]
                 for lvl_name in target_levels:
                     lvl_price = fib_levels[lvl_name]
                     dist_pct = abs(curr_price - lvl_price) / lvl_price
@@ -344,7 +344,7 @@ class FibonacciRetracementStrategy(BaseStrategy):
                 matched_level_name = None
                 matched_level_price = None
 
-                target_levels = ["FIB_618", "FIB_500", "FIB_786", "FIB_382"]
+                target_levels = ["FIB_618", "FIB_500", "FIB_786"]
                 for lvl_name in target_levels:
                     lvl_price = fib_levels[lvl_name]
                     dist_pct = abs(curr_price - lvl_price) / lvl_price

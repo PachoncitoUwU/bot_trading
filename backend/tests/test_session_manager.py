@@ -13,7 +13,7 @@ def test_session_manager_init_and_sync():
         weekend_deadline=datetime(2026, 10, 11, 23, 59, 59)
     )
     assert sm.weekend_autopilot is True
-    assert sm.session_max_trades == 7
+    assert sm.session_max_trades == 4
     assert sm.rest_minutes == 50
     assert sm.cycle_state == "ACTIVE"
 
@@ -21,7 +21,7 @@ def test_session_manager_init_and_sync():
     assert sm.session_starting_equity == Decimal("9388.24")
     assert sm.weekend_start_equity == Decimal("9388.24")
 
-def test_session_manager_7_trades_triggers_limit():
+def test_session_manager_4_trades_triggers_limit():
     sm = SessionManager(
         target_mode="3.5%",
         rest_minutes=50,
@@ -29,17 +29,37 @@ def test_session_manager_7_trades_triggers_limit():
     )
     sm.sync_starting_equity(Decimal("10000.00"))
 
-    for i in range(6):
-        res = sm.record_trade_result(Decimal("10.00"), True, Decimal("10010.00"))
-        assert res["is_target_reached"] is False
+    # 1 win, 1 loss, 1 win
+    sm.record_trade_result(Decimal("46.20"), True, Decimal("10046.20"))
+    sm.record_trade_result(Decimal("-55.00"), False, Decimal("9991.20"))
+    res3 = sm.record_trade_result(Decimal("46.20"), True, Decimal("10037.40"))
+    assert res3["is_target_reached"] is False
 
-    # 7th trade triggers limit
-    res7 = sm.record_trade_result(Decimal("-55.00"), False, Decimal("1000.00"))
-    assert res7["is_target_reached"] is True
-    assert res7["target_reason"] == "SESSION_LIMIT_7_REACHED"
-    assert sm.total_weekend_trades == 7
-    assert sm.total_weekend_wins == 6
+    # 4th trade triggers session max limit
+    res4 = sm.record_trade_result(Decimal("46.20"), True, Decimal("10083.60"))
+    assert res4["is_target_reached"] is True
+    assert res4["target_reason"] in ["SESSION_LIMIT_4_REACHED", "WIN_TARGET_3_REACHED"]
+    assert sm.total_weekend_trades == 4
+    assert sm.total_weekend_wins == 3
     assert sm.total_weekend_losses == 1
+
+def test_session_manager_2_losses_triggers_safety_stop():
+    sm = SessionManager(
+        target_mode="3.5%",
+        rest_minutes=50,
+        weekend_autopilot=True
+    )
+    sm.sync_starting_equity(Decimal("10000.00"))
+
+    # 1 loss
+    res1 = sm.record_trade_result(Decimal("-55.00"), False, Decimal("9945.00"))
+    assert res1["is_target_reached"] is False
+
+    # 2nd loss triggers hard safety stop
+    res2 = sm.record_trade_result(Decimal("-55.00"), False, Decimal("9890.00"))
+    assert res2["is_target_reached"] is True
+    assert res2["target_reason"] == "MAX_LOSSES_2_REACHED"
+    assert sm.session_losses == 2
 
 def test_session_manager_section_rest_and_resume():
     sm = SessionManager(
