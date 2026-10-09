@@ -22,4 +22,4 @@ async def test_token_bucket_refills_over_time():
     # Wait for refill
     await asyncio.sleep(0.3)
     # Refill rate 10/sec * 0.3s = ~3 tokens replenished
-    assert limiter.tokens >= 2.0
+    assert limiter.get_current_tokens() >= 2.0

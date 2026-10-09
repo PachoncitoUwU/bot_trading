@@ -33,34 +33,62 @@ class TelegramBroadcastService:
         rsi_str = f"{rsi_val:.1f}" if rsi_val is not None else "Extremo"
         pattern_str = meta.get("pattern") or signal.pattern_name or "Absorción Institucional"
 
-        if is_put:
-            dir_badge = "🔴 PUT (BAJADA / VENTA)"
-            momentum_text = f"RSI en {rsi_str} (Sobrecompra profunda + Giro bajista)"
-            bb_text = "Rechazo contundente en Banda Superior de Bollinger"
-            thesis_text = "Agotamiento del impulso comprador en techo dinámico; se proyecta retroceso correctivo hacia la media móvil central."
+        fib_level = meta.get("fib_level")
+        level_price = meta.get("level_price")
+        wick_ratio = meta.get("wick_ratio")
+
+        if fib_level:
+            fib_display = {
+                "FIB_618": "Proporción Áurea 61.8% (Golden Ratio)",
+                "FIB_500": "Equilibrio Institucional 50.0%",
+                "FIB_786": "Retroceso Profundo 78.6% (Deep Pocket)",
+                "FIB_382": "Retroceso de Continuación 38.2%",
+            }.get(fib_level, fib_level)
+            lvl_str = f"${level_price:.5f}" if level_price else ""
+            wick_str = f"Mecha de rechazo {wick_ratio:.1f}x cuerpo" if wick_ratio else "Rechazo validado"
+
+            if is_put:
+                dir_badge = "🔴 PUT (BAJADA / VENTA)"
+                momentum_text = f"RSI en {rsi_str} (Giro bajista desde retroceso)"
+                fib_line = f"• 📐 <b>Nivel Fibonacci:</b> {fib_display} {lvl_str}\n"
+                pattern_line = f"• 🕯️ <b>Acción del Precio:</b> {wick_str} en resistencia\n"
+                thesis_text = f"Rechazo matemático en la zona {fib_level} ({lvl_str}); la tendencia bajista principal retoma el control del precio."
+            else:
+                dir_badge = "🟢 CALL (SUBIDA / COMPRA)"
+                momentum_text = f"RSI en {rsi_str} (Giro alcista desde retroceso)"
+                fib_line = f"• 📐 <b>Nivel Fibonacci:</b> {fib_display} {lvl_str}\n"
+                pattern_line = f"• 🕯️ <b>Acción del Precio:</b> {wick_str} en soporte\n"
+                thesis_text = f"Rebote institucional matemático en la zona {fib_level} ({lvl_str}); la tendencia alcista principal retoma el impulso."
         else:
-            dir_badge = "🟢 CALL (SUBIDA / COMPRA)"
-            momentum_text = f"RSI en {rsi_str} (Sobreventa profunda + Giro alcista)"
-            bb_text = "Rechazo contundente en Banda Inferior de Bollinger"
-            thesis_text = "Fuerte absorción de compra en piso dinámico; se proyecta rebote impulsivo hacia la media móvil central."
+            fib_line = ""
+            pattern_line = f"• 🕯️ <b>Acción del Precio:</b> {pattern_str}\n"
+            if is_put:
+                dir_badge = "🔴 PUT (BAJADA / VENTA)"
+                momentum_text = f"RSI en {rsi_str} (Sobrecompra profunda + Giro bajista)"
+                bb_text = "Rechazo contundente en Banda Superior de Bollinger"
+                thesis_text = "Agotamiento del impulso comprador en techo dinámico; se proyecta retroceso correctivo hacia la media móvil central."
+            else:
+                dir_badge = "🟢 CALL (SUBIDA / COMPRA)"
+                momentum_text = f"RSI en {rsi_str} (Sobreventa profunda + Giro alcista)"
+                bb_text = "Rechazo contundente en Banda Inferior de Bollinger"
+                thesis_text = "Fuerte absorción de compra en piso dinámico; se proyecta rebote impulsivo hacia la media móvil central."
 
         concurrent_line = f"\n📊 <b>Operaciones activas:</b> <code>{active_concurrent}</code>" if active_concurrent else ""
 
         return (
-            f"🎯 <b>ORDEN EJECUTADA: ALTA PRECISIÓN SNIPER</b>\n"
+            f"🎯 <b>ORDEN EJECUTADA: FIBONACCI GOLDEN SNIPER</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"🪙 <b>Activo:</b> <code>{clean_symbol} (OTC 24/7)</code>\n"
             f"🧭 <b>Dirección:</b> <b>{dir_badge}</b>\n"
             f"💵 <b>Inversión Fija:</b> <b>{invested_str}</b> 🛡️ (Cero Martingala)\n"
             f"⏱️ <b>Tiempo de Expiración:</b> <b>{dur_str}</b> (Sin ruido de 1m)\n"
-            f"🎯 <b>Convicción Algorítmica:</b> <b>{conf_pct}% [Filtro Sniper Aprobado]</b>\n"
+            f"🎯 <b>Convicción Algorítmica:</b> <b>{conf_pct}% [Matemática Fibonacci]</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🧠 <b>ANÁLISIS TÉCNICO MULTI-FACTOR:</b>\n"
+            f"🧠 <b>ANÁLISIS CUANTITATIVO:</b>\n"
+            f"{fib_line}"
+            f"{pattern_line}"
             f"• 📊 <b>Momento:</b> {momentum_text}\n"
-            f"• ⚡ <b>Volatilidad:</b> {bb_text}\n"
-            f"• 🕯️ <b>Acción del Precio:</b> {pattern_str}\n"
-            f"• 📈 <b>Tendencia Macro:</b> Estructura validada por EMA 50 / 100\n"
-            f"• 🔗 <b>Confluencias:</b> <b>{confluences}/3 factores confirmados</b>\n"
+            f"• 📈 <b>Tendencia Macro:</b> Estructura validada por EMA 50 / 150\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"🔮 <b>Tesis de la Operación:</b>\n"
             f"<i>{thesis_text}</i>{concurrent_line}\n"

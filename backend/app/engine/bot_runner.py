@@ -24,6 +24,7 @@ from app.engine.state_reconciler import StateReconciler, ReconciliationResult
 from app.exchange.ccxt_adapter import CCXTExchangeAdapter
 from app.services.sentiment_service import sentiment_service
 from app.strategies.base_strategy import BaseStrategy, StrategySignal
+from app.strategies.fibonacci_strategy import FibonacciRetracementStrategy
 from app.strategies.ai_learning_strategy import AILearningStrategy
 from app.telegram.admin_handlers import TelegramAdminHandler
 from app.telegram.broadcast_channel import TelegramBroadcastService
@@ -57,8 +58,8 @@ class BotRunner:
         self.heartbeat = HeartbeatWatchdog()
         self.broadcast_service = TelegramBroadcastService()
 
-        # Active AI Adaptive Strategy
-        self.strategy: BaseStrategy = AILearningStrategy(
+        # Active Fibonacci Quantitative Strategy (Golden Pocket 61.8% / 50% / 78.6%)
+        self.strategy: BaseStrategy = FibonacciRetracementStrategy(
             symbols=settings.TRADING_SYMBOLS,
             timeframe=settings.DEFAULT_TIMEFRAME,
         )

@@ -70,8 +70,10 @@ async def get_candles(symbol: str = "BTC/USDT"):
 
 
 @router.get("/ai-stats")
-async def get_ai_stats():
-    """Returns real-time AI strategy learning statistics and learned pattern weights."""
+@router.get("/strategy-stats")
+@router.get("/fibonacci-stats")
+async def get_strategy_stats():
+    """Returns real-time quantitative Fibonacci strategy statistics and level performance."""
     if hasattr(bot_runner.strategy, "get_stats"):
         return bot_runner.strategy.get_stats()
     return {"status": "Strategy does not expose stats"}
