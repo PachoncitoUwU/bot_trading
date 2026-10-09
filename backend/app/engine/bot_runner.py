@@ -397,7 +397,7 @@ class BotRunner:
         # Selección de duración inteligente:
         # Alta Convicción Sniper: Duración fija de 5 minutos
         # Filtra el ruido errático de 1 minuto y permite que la confluencia técnica se desarrolle limpiamente
-        trade_duration = 5
+        trade_duration = getattr(self, "duration_minutes", 1) or 1
 
         if settings.EXCHANGE_ID.lower() == "iqoption":
             import time
