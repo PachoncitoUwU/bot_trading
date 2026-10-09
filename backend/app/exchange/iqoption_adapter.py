@@ -20,6 +20,19 @@ except ImportError:
     HAS_IQOPTION = False
 
 
+MODERN_ACTIVE_IDS = {
+    "EURUSD": 1861, "EURUSD-OP": 1861, "EURUSD-OTC": 1861,
+    "GBPUSD": 1867, "GBPUSD-OP": 1867, "GBPUSD-OTC": 1867,
+    "EURGBP": 1862, "EURGBP-OP": 1862, "EURGBP-OTC": 1862,
+    "EURJPY": 1864, "EURJPY-OP": 1864, "EURJPY-OTC": 1864,
+    "USDJPY": 1865, "USDJPY-OP": 1865, "USDJPY-OTC": 1865,
+    "GBPJPY": 1866, "GBPJPY-OP": 1866, "GBPJPY-OTC": 1866,
+    "NZDUSD": 1896, "NZDUSD-OP": 1896, "NZDUSD-OTC": 1896,
+    "GBPCAD": 1897, "GBPCAD-OP": 1897, "GBPCAD-OTC": 1897,
+    "USDCAD": 1878, "USDCAD-OP": 1878, "USDCAD-OTC": 1878,
+}
+
+
 class IQOptionAdapter:
     """Standardized Exchange Adapter for IQ Option."""
 
@@ -61,6 +74,29 @@ class IQOptionAdapter:
         try:
             self.client = await asyncio.to_thread(_connect)
             self.is_initialized = True
+            
+            # Map modern active IDs (1860+ series) into OP_code.ACTIVES
+            import iqoptionapi.constants as OP_code
+            MODERN_ACTIVE_IDS = {
+                "EURUSD": 1861, "EURUSD-OP": 1861, "EURUSD-OTC": 1861,
+                "GBPUSD": 1867, "GBPUSD-OP": 1867, "GBPUSD-OTC": 1867,
+                "EURGBP": 1862, "EURGBP-OP": 1862, "EURGBP-OTC": 1862,
+                "EURJPY": 1864, "EURJPY-OP": 1864, "EURJPY-OTC": 1864,
+                "USDJPY": 1865, "USDJPY-OP": 1865, "USDJPY-OTC": 1865,
+                "GBPJPY": 1866, "GBPJPY-OP": 1866, "GBPJPY-OTC": 1866,
+                "NZDUSD": 1896, "NZDUSD-OP": 1896, "NZDUSD-OTC": 1896,
+                "GBPCAD": 1897, "GBPCAD-OP": 1897, "GBPCAD-OTC": 1897,
+                "USDCAD": 1878, "USDCAD-OP": 1878, "USDCAD-OTC": 1878,
+            }
+            for k, v in MODERN_ACTIVE_IDS.items():
+                OP_code.ACTIVES[k] = v
+                OP_code.ACTIVES[k.lower()] = v
+                OP_code.ACTIVES[k.upper()] = v
+                clean = k.replace("-OP", "").replace("-op", "").replace("-OTC", "").replace("-otc", "").upper()
+                OP_code.ACTIVES[clean] = v
+                OP_code.ACTIVES[f"{clean}-op"] = v
+                OP_code.ACTIVES[f"{clean}-OTC"] = v
+
             bal = self.client.get_balance()
             logger.info(f"[IQOPTION] Successfully connected! Balance ({self.balance_type}): ${bal:,.2f}")
         except Exception as e:
@@ -168,37 +204,57 @@ class IQOptionAdapter:
                 await asyncio.to_thread(self.client.change_balance, self.balance_type)
 
             logger.info(f"[IQOPTION] Placing {action.upper()} on {active} for ${invest_amount} (Requested duration: {duration_minutes}m)...")
-            instrument_type = "BINARY"
+            candidates = []
+            base_clean = active.replace("-OTC", "").replace("-OP", "")
+            candidates.append(f"{base_clean}-op")
+            candidates.append(active)
+            candidates.append(base_clean)
+            candidates.append(f"{base_clean}-OTC")
             
-            # 1. Try Standard Binary / Turbo Option
-            status, order_id = await asyncio.to_thread(
-                self.client.buy, invest_amount, active, action, duration_minutes
-            )
-            
-            # 2. Fallback: if duration > 1 rejected, try 1-minute turbo binary
-            if not status and duration_minutes != 1:
-                logger.info(f"[IQOPTION] {duration_minutes}m binary rejected on {active}. Retrying with 1m turbo...")
-                status, order_id = await asyncio.to_thread(
-                    self.client.buy, invest_amount, active, action, 1
-                )
-                if status:
-                    instrument_type = "BINARY"
+            # Deduplicate preserving order
+            unique_candidates = []
+            for c in candidates:
+                if c not in unique_candidates:
+                    unique_candidates.append(c)
 
-            # 3. Fallback: If standard Forex pair is closed for binary, retry on 24/7 OTC asset
-            if not status and not active.endswith("-OTC"):
-                otc_active = f"{active}-OTC"
-                logger.info(f"[IQOPTION] {active} closed for binary. Retrying on 24/7 OTC market ({otc_active})...")
-                status, order_id = await asyncio.to_thread(
-                    self.client.buy, invest_amount, otc_active, action, duration_minutes
-                )
-                if not status and duration_minutes != 1:
+            status = False
+            order_id = None
+
+            import iqoptionapi.constants as OP_code
+            for cand in unique_candidates:
+                clean_k = cand.replace("-op", "").replace("-OP", "").replace("-OTC", "").replace("-otc", "").upper()
+                if clean_k in MODERN_ACTIVE_IDS:
+                    OP_code.ACTIVES[cand] = MODERN_ACTIVE_IDS[clean_k]
+                elif clean_k in OP_code.ACTIVES:
+                    OP_code.ACTIVES[cand] = OP_code.ACTIVES[clean_k]
+                elif cand not in OP_code.ACTIVES:
+                    continue
+
+                try:
+                    # 1. Try with requested duration
                     status, order_id = await asyncio.to_thread(
-                        self.client.buy, invest_amount, otc_active, action, 1
+                        self.client.buy, invest_amount, cand, action, duration_minutes
                     )
-                if status:
-                    symbol = otc_active
-                    active = otc_active
-                    instrument_type = "BINARY"
+                    if status and order_id:
+                        active = cand
+                        symbol = cand
+                        instrument_type = "BINARY"
+                        logger.info(f"[IQOPTION] ✅ Order placed successfully on {cand} ({duration_minutes}m)! ID: {order_id}")
+                        break
+
+                    # 2. Try 1m turbo fallback
+                    if duration_minutes != 1:
+                        status, order_id = await asyncio.to_thread(
+                            self.client.buy, invest_amount, cand, action, 1
+                        )
+                        if status and order_id:
+                            active = cand
+                            symbol = cand
+                            instrument_type = "BINARY"
+                            logger.info(f"[IQOPTION] ✅ Order placed successfully on {cand} (1m turbo)! ID: {order_id}")
+                            break
+                except KeyError:
+                    continue
                 
             # 4. Fallback: Try Digital Option with safe timeout (prevents infinite while loop in iqoptionapi)
             if not status and hasattr(self.client, "api") and self.client.api:

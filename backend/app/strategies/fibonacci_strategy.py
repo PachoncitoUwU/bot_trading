@@ -46,8 +46,8 @@ class FibonacciRetracementStrategy(BaseStrategy):
     def __init__(self, symbols: List[str], timeframe: str = "1m", params: Optional[Dict[str, Any]] = None):
         default_params = {
             "swing_window": 40,           # Cantidad de velas para detectar Swing High y Swing Low
-            "min_impulse_pct": Decimal("0.08"),  # Amplitud mínima del impulso (% del precio) para validar swing
-            "tolerance_pct": Decimal("0.035"),   # Tolerancia de proximidad al nivel Fib (en %)
+            "min_impulse_pct": Decimal("0.05"),  # Amplitud mínima del impulso (% del precio, ~5 pips)
+            "tolerance_pct": Decimal("0.04"),    # Tolerancia de proximidad al nivel Fib (en %)
             "trend_ema": 50,              # EMA intermedia para dirección de tendencia
             "macro_ema": 150,             # EMA macro institucional
             "rsi_period": 14,             # Periodo de RSI para confluencia
