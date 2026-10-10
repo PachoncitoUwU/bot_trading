@@ -252,6 +252,14 @@ class FibonacciRetracementStrategy(BaseStrategy):
                         break
 
                 if matched_level_name:
+                    # Filtro contra-tendencia macro agresiva:
+                    if curr_price < macro_ema and trend_ema < macro_ema and rsi > Decimal("35.0"):
+                        self.latest_thoughts[symbol] = (
+                            f"⚠️ Filtro Macro Bajista en {symbol}: Precio ({curr_price:.5f}) bajo EMA50 ({macro_ema:.5f}). "
+                            "Omitiendo CALL para no operar contra la tendencia."
+                        )
+                        continue
+
                     # Análisis de Rechazo / Acción del Precio (Rejection Wick / Hammer)
                     candle_range = curr_high - curr_low
                     body = abs(curr_close - curr_open)
@@ -260,11 +268,11 @@ class FibonacciRetracementStrategy(BaseStrategy):
                     is_bullish_rejection = False
                     wick_ratio = lower_wick / (body if body > Decimal("0") else Decimal("0.00001"))
 
-                    # Rechazo: Mecha inferior larga sobre el soporte Fibonacci o vela verde de rebote
+                    # Rechazo: Mecha inferior larga sobre el soporte Fibonacci o vela verde con mecha
                     if wick_ratio >= to_decimal(self.params["rejection_wick_ratio"]):
                         is_bullish_rejection = True
-                    elif curr_close > curr_open and prev_close <= matched_level_price:
-                        # Rebote de confirmación (vela verde saliendo del soporte)
+                    elif curr_close > curr_open and prev_close <= matched_level_price and wick_ratio >= Decimal("0.8"):
+                        # Rebote de confirmación (vela verde con mecha inferior de soporte)
                         is_bullish_rejection = True
 
                     # Confluencia de RSI (no sobrecomprado, girando hacia arriba)
@@ -354,6 +362,14 @@ class FibonacciRetracementStrategy(BaseStrategy):
                         break
 
                 if matched_level_name:
+                    # Filtro contra-tendencia macro agresiva:
+                    if curr_price > macro_ema and trend_ema > macro_ema and rsi < Decimal("65.0"):
+                        self.latest_thoughts[symbol] = (
+                            f"⚠️ Filtro Macro Alcista en {symbol}: Precio ({curr_price:.5f}) sobre EMA50 ({macro_ema:.5f}). "
+                            "Omitiendo PUT para no operar contra la tendencia."
+                        )
+                        continue
+
                     # Análisis de Rechazo / Acción del Precio (Shooting Star / Mecha superior)
                     candle_range = curr_high - curr_low
                     body = abs(curr_close - curr_open)
@@ -364,8 +380,8 @@ class FibonacciRetracementStrategy(BaseStrategy):
 
                     if wick_ratio >= to_decimal(self.params["rejection_wick_ratio"]):
                         is_bearish_rejection = True
-                    elif curr_close < curr_open and prev_close >= matched_level_price:
-                        # Vela roja saliendo de la resistencia
+                    elif curr_close < curr_open and prev_close >= matched_level_price and wick_ratio >= Decimal("0.8"):
+                        # Vela roja saliendo de la resistencia con mecha superior
                         is_bearish_rejection = True
 
                     # Confluencia de RSI (no sobrevendido, girando hacia abajo)
